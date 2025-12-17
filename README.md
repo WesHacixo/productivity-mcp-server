@@ -194,6 +194,10 @@ docker run -p 8000:8000 \
 | `PORT` | Server port (default: 8000) | No |
 | `GIN_MODE` | Gin mode (debug/release) | No |
 
+## OpenAI Free-tier Guard
+
+We include `scripts/openai_quota_guard.py` and `scripts/run_with_openai_guard.sh` so you can enforce the documented model/token limits before every OpenAI call. See `docs/openai-quota.md` for full usage details and wrap your CLI invocations with the script shown there.
+
 ## MCP Integration with Claude
 
 ### Claude Desktop

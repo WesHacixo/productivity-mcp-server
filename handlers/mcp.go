@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -31,15 +32,15 @@ func NewMCPHandler(taskHandler *TaskHandler, goalHandler *GoalHandler, claudeHan
 func MCPInitialize(c *gin.Context) {
 	response := gin.H{
 		"jsonrpc": "2.0",
-		"id": 1,
+		"id":      1,
 		"result": gin.H{
 			"protocolVersion": "2024-11-05",
 			"capabilities": gin.H{
 				"logging": gin.H{},
-				"tools": gin.H{},
+				"tools":   gin.H{},
 			},
 			"serverInfo": gin.H{
-				"name": "Productivity MCP Server",
+				"name":    "Productivity MCP Server",
 				"version": "1.0.0",
 			},
 		},
@@ -52,25 +53,25 @@ func MCPInitialize(c *gin.Context) {
 func MCPListTools(c *gin.Context) {
 	tools := []gin.H{
 		{
-			"name": "create_task",
+			"name":        "create_task",
 			"description": "Create a new task in the productivity app",
 			"inputSchema": gin.H{
 				"type": "object",
 				"properties": gin.H{
 					"title": gin.H{
-						"type": "string",
+						"type":        "string",
 						"description": "Task title",
 					},
 					"description": gin.H{
-						"type": "string",
+						"type":        "string",
 						"description": "Task description",
 					},
 					"due_date": gin.H{
-						"type": "string",
+						"type":        "string",
 						"description": "Due date in ISO 8601 format",
 					},
 					"priority": gin.H{
-						"type": "integer",
+						"type":        "integer",
 						"description": "Priority level (1-5)",
 					},
 				},
@@ -78,21 +79,21 @@ func MCPListTools(c *gin.Context) {
 			},
 		},
 		{
-			"name": "create_goal",
+			"name":        "create_goal",
 			"description": "Create a new goal in the productivity app",
 			"inputSchema": gin.H{
 				"type": "object",
 				"properties": gin.H{
 					"title": gin.H{
-						"type": "string",
+						"type":        "string",
 						"description": "Goal title",
 					},
 					"description": gin.H{
-						"type": "string",
+						"type":        "string",
 						"description": "Goal description",
 					},
 					"target_date": gin.H{
-						"type": "string",
+						"type":        "string",
 						"description": "Target date in ISO 8601 format",
 					},
 				},
@@ -100,13 +101,13 @@ func MCPListTools(c *gin.Context) {
 			},
 		},
 		{
-			"name": "parse_task",
+			"name":        "parse_task",
 			"description": "Parse natural language input into a structured task",
 			"inputSchema": gin.H{
 				"type": "object",
 				"properties": gin.H{
 					"input": gin.H{
-						"type": "string",
+						"type":        "string",
 						"description": "Natural language task description",
 					},
 				},
@@ -114,17 +115,17 @@ func MCPListTools(c *gin.Context) {
 			},
 		},
 		{
-			"name": "generate_subtasks",
+			"name":        "generate_subtasks",
 			"description": "Generate subtasks for a given task",
 			"inputSchema": gin.H{
 				"type": "object",
 				"properties": gin.H{
 					"task_title": gin.H{
-						"type": "string",
+						"type":        "string",
 						"description": "Main task title",
 					},
 					"task_description": gin.H{
-						"type": "string",
+						"type":        "string",
 						"description": "Task description for context",
 					},
 				},
@@ -132,13 +133,13 @@ func MCPListTools(c *gin.Context) {
 			},
 		},
 		{
-			"name": "analyze_productivity",
+			"name":        "analyze_productivity",
 			"description": "Analyze user productivity patterns and provide insights",
 			"inputSchema": gin.H{
 				"type": "object",
 				"properties": gin.H{
 					"days": gin.H{
-						"type": "integer",
+						"type":        "integer",
 						"description": "Number of days to analyze (default: 7)",
 					},
 				},
@@ -148,7 +149,7 @@ func MCPListTools(c *gin.Context) {
 
 	response := gin.H{
 		"jsonrpc": "2.0",
-		"id": 1,
+		"id":      1,
 		"result": gin.H{
 			"tools": tools,
 		},
@@ -164,9 +165,9 @@ func (m *MCPHandler) MCPCallTool(c *gin.Context) {
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"jsonrpc": "2.0",
-			"id": 1,
+			"id":      1,
 			"error": gin.H{
-				"code": -32700,
+				"code":    -32700,
 				"message": "Parse error",
 			},
 		})
@@ -224,19 +225,18 @@ func (m *MCPHandler) MCPCallTool(c *gin.Context) {
 
 		// Bind JSON to context
 		c.Request.Body = io.NopCloser(bytes.NewBuffer(mustMarshal(reqBody)))
-		w := &responseRecorder{Context: c, body: make([]byte, 0)}
-		m.taskHandler.CreateTask(w)
+		statusCode, body := captureHandlerResponse(c, m.taskHandler.CreateTask)
 
-		if w.statusCode == http.StatusCreated {
+		if statusCode == http.StatusCreated {
 			var taskData map[string]interface{}
-			if err := json.Unmarshal(w.body, &taskData); err == nil {
+			if err := json.Unmarshal(body, &taskData); err == nil {
 				result = taskData
 			} else {
 				result = gin.H{"status": "created"}
 			}
 		} else {
 			var errData map[string]interface{}
-			json.Unmarshal(w.body, &errData)
+			json.Unmarshal(body, &errData)
 			errMsg, _ = errData["error"].(string)
 		}
 
@@ -267,26 +267,25 @@ func (m *MCPHandler) MCPCallTool(c *gin.Context) {
 		}
 
 		reqBody := models.CreateGoalRequest{
-			Title:      title,
+			Title:       title,
 			Description: description,
-			StartDate:  time.Now(),
-			TargetDate: targetDate,
+			StartDate:   time.Now(),
+			TargetDate:  targetDate,
 		}
 
 		c.Request.Body = io.NopCloser(bytes.NewBuffer(mustMarshal(reqBody)))
-		w := &responseRecorder{Context: c, body: make([]byte, 0)}
-		m.goalHandler.CreateGoal(w)
+		statusCode, body := captureHandlerResponse(c, m.goalHandler.CreateGoal)
 
-		if w.statusCode == http.StatusCreated {
+		if statusCode == http.StatusCreated {
 			var goalData map[string]interface{}
-			if err := json.Unmarshal(w.body, &goalData); err == nil {
+			if err := json.Unmarshal(body, &goalData); err == nil {
 				result = goalData
 			} else {
 				result = gin.H{"status": "created"}
 			}
 		} else {
 			var errData map[string]interface{}
-			json.Unmarshal(w.body, &errData)
+			json.Unmarshal(body, &errData)
 			errMsg, _ = errData["error"].(string)
 		}
 
@@ -305,16 +304,15 @@ func (m *MCPHandler) MCPCallTool(c *gin.Context) {
 		}
 
 		c.Request.Body = io.NopCloser(bytes.NewBuffer(mustMarshal(reqBody)))
-		w := &responseRecorder{Context: c, body: make([]byte, 0)}
-		m.claudeHandler.ParseTask(w)
+		statusCode, body := captureHandlerResponse(c, m.claudeHandler.ParseTask)
 
-		if w.statusCode == http.StatusOK {
+		if statusCode == http.StatusOK {
 			var parseData map[string]interface{}
-			json.Unmarshal(w.body, &parseData)
+			json.Unmarshal(body, &parseData)
 			result = parseData
 		} else {
 			var errData map[string]interface{}
-			json.Unmarshal(w.body, &errData)
+			json.Unmarshal(body, &errData)
 			errMsg, _ = errData["error"].(string)
 		}
 
@@ -335,16 +333,15 @@ func (m *MCPHandler) MCPCallTool(c *gin.Context) {
 		}
 
 		c.Request.Body = io.NopCloser(bytes.NewBuffer(mustMarshal(reqBody)))
-		w := &responseRecorder{Context: c, body: make([]byte, 0)}
-		m.claudeHandler.GenerateSubtasks(w)
+		statusCode, body := captureHandlerResponse(c, m.claudeHandler.GenerateSubtasks)
 
-		if w.statusCode == http.StatusOK {
+		if statusCode == http.StatusOK {
 			var subtaskData map[string]interface{}
-			json.Unmarshal(w.body, &subtaskData)
+			json.Unmarshal(body, &subtaskData)
 			result = subtaskData
 		} else {
 			var errData map[string]interface{}
-			json.Unmarshal(w.body, &errData)
+			json.Unmarshal(body, &errData)
 			errMsg, _ = errData["error"].(string)
 		}
 
@@ -363,16 +360,15 @@ func (m *MCPHandler) MCPCallTool(c *gin.Context) {
 		}
 
 		c.Request.Body = io.NopCloser(bytes.NewBuffer(mustMarshal(reqBody)))
-		w := &responseRecorder{Context: c, body: make([]byte, 0)}
-		m.claudeHandler.AnalyzeProductivity(w)
+		statusCode, body := captureHandlerResponse(c, m.claudeHandler.AnalyzeProductivity)
 
-		if w.statusCode == http.StatusOK {
+		if statusCode == http.StatusOK {
 			var analyzeData map[string]interface{}
-			json.Unmarshal(w.body, &analyzeData)
+			json.Unmarshal(body, &analyzeData)
 			result = analyzeData
 		} else {
 			var errData map[string]interface{}
-			json.Unmarshal(w.body, &errData)
+			json.Unmarshal(body, &errData)
 			errMsg, _ = errData["error"].(string)
 		}
 
@@ -383,9 +379,9 @@ func (m *MCPHandler) MCPCallTool(c *gin.Context) {
 	if errMsg != "" {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"jsonrpc": "2.0",
-			"id": req.ID,
+			"id":      req.ID,
 			"error": gin.H{
-				"code": -32601,
+				"code":    -32601,
 				"message": errMsg,
 			},
 		})
@@ -394,27 +390,28 @@ func (m *MCPHandler) MCPCallTool(c *gin.Context) {
 
 	response := gin.H{
 		"jsonrpc": "2.0",
-		"id": req.ID,
-		"result": result,
+		"id":      req.ID,
+		"result":  result,
 	}
 
 	c.JSON(http.StatusOK, response)
 }
 
-// responseRecorder captures handler responses
-type responseRecorder struct {
-	*gin.Context
-	body       []byte
-	statusCode int
-}
-
-func (r *responseRecorder) JSON(code int, obj interface{}) {
-	r.statusCode = code
-	body, _ := json.Marshal(obj)
-	r.body = body
-}
-
 func mustMarshal(v interface{}) []byte {
 	data, _ := json.Marshal(v)
 	return data
+}
+
+func captureHandlerResponse(src *gin.Context, handler func(*gin.Context)) (int, []byte) {
+	rec := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(rec)
+	ctx.Request = src.Request
+	if src.Keys != nil {
+		for k, v := range src.Keys {
+			ctx.Set(k, v)
+		}
+	}
+
+	handler(ctx)
+	return rec.Code, rec.Body.Bytes()
 }
