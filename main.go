@@ -80,8 +80,9 @@ func main() {
 	}
 
 	// MCP Protocol routes
+	mcpHandler := handlers.NewMCPHandler(taskHandler, goalHandler, claudeHandler)
 	router.POST("/mcp/initialize", handlers.MCPInitialize)
-	router.POST("/mcp/call_tool", handlers.MCPCallTool)
+	router.POST("/mcp/call_tool", mcpHandler.MCPCallTool)
 	router.POST("/mcp/list_tools", handlers.MCPListTools)
 
 	// Start server

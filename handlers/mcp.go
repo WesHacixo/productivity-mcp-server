@@ -1,11 +1,31 @@
 package handlers
 
 import (
+	"bytes"
+	"encoding/json"
+	"io"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/productivity/mcp-server/models"
 )
+
+// MCPHandler holds handlers for MCP protocol
+type MCPHandler struct {
+	taskHandler   *TaskHandler
+	goalHandler   *GoalHandler
+	claudeHandler *ClaudeHandler
+}
+
+// NewMCPHandler creates a new MCP handler
+func NewMCPHandler(taskHandler *TaskHandler, goalHandler *GoalHandler, claudeHandler *ClaudeHandler) *MCPHandler {
+	return &MCPHandler{
+		taskHandler:   taskHandler,
+		goalHandler:   goalHandler,
+		claudeHandler: claudeHandler,
+	}
+}
 
 // MCPInitialize handles MCP protocol initialization
 func MCPInitialize(c *gin.Context) {
@@ -138,7 +158,7 @@ func MCPListTools(c *gin.Context) {
 }
 
 // MCPCallTool handles tool calls from Claude
-func MCPCallTool(c *gin.Context) {
+func (m *MCPHandler) MCPCallTool(c *gin.Context) {
 	var req models.MCPRequest
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -153,33 +173,211 @@ func MCPCallTool(c *gin.Context) {
 		return
 	}
 
+	// Extract params
+	params := req.Params
+	if params == nil {
+		params = make(map[string]interface{})
+	}
+
 	// Route to appropriate handler based on method
 	var result interface{}
 	var errMsg string
 
 	switch req.Method {
 	case "create_task":
-		result = gin.H{"id": "task-123", "status": "created"}
+		title, _ := params["title"].(string)
+		description, _ := params["description"].(string)
+		dueDateStr, _ := params["due_date"].(string)
+		priority, _ := params["priority"].(float64)
+		userID, _ := params["user_id"].(string)
+
+		if title == "" || dueDateStr == "" {
+			errMsg = "title and due_date are required"
+			break
+		}
+
+		dueDate, err := time.Parse(time.RFC3339, dueDateStr)
+		if err != nil {
+			dueDate, err = time.Parse("2006-01-02T15:04:05Z07:00", dueDateStr)
+			if err != nil {
+				errMsg = "invalid due_date format"
+				break
+			}
+		}
+
+		if userID != "" {
+			c.Set("user_id", userID)
+		} else {
+			c.Set("user_id", getUserID(c))
+		}
+
+		// Create request body
+		reqBody := models.CreateTaskRequest{
+			Title:       title,
+			Description: description,
+			DueDate:     dueDate,
+			Priority:    int(priority),
+		}
+		if reqBody.Priority == 0 {
+			reqBody.Priority = 3
+		}
+
+		// Bind JSON to context
+		c.Request.Body = io.NopCloser(bytes.NewBuffer(mustMarshal(reqBody)))
+		w := &responseRecorder{Context: c, body: make([]byte, 0)}
+		m.taskHandler.CreateTask(w)
+
+		if w.statusCode == http.StatusCreated {
+			var taskData map[string]interface{}
+			if err := json.Unmarshal(w.body, &taskData); err == nil {
+				result = taskData
+			} else {
+				result = gin.H{"status": "created"}
+			}
+		} else {
+			var errData map[string]interface{}
+			json.Unmarshal(w.body, &errData)
+			errMsg, _ = errData["error"].(string)
+		}
+
 	case "create_goal":
-		result = gin.H{"id": "goal-123", "status": "created"}
+		title, _ := params["title"].(string)
+		description, _ := params["description"].(string)
+		targetDateStr, _ := params["target_date"].(string)
+		userID, _ := params["user_id"].(string)
+
+		if title == "" || targetDateStr == "" {
+			errMsg = "title and target_date are required"
+			break
+		}
+
+		targetDate, err := time.Parse(time.RFC3339, targetDateStr)
+		if err != nil {
+			targetDate, err = time.Parse("2006-01-02T15:04:05Z07:00", targetDateStr)
+			if err != nil {
+				errMsg = "invalid target_date format"
+				break
+			}
+		}
+
+		if userID != "" {
+			c.Set("user_id", userID)
+		} else {
+			c.Set("user_id", getUserID(c))
+		}
+
+		reqBody := models.CreateGoalRequest{
+			Title:      title,
+			Description: description,
+			StartDate:  time.Now(),
+			TargetDate: targetDate,
+		}
+
+		c.Request.Body = io.NopCloser(bytes.NewBuffer(mustMarshal(reqBody)))
+		w := &responseRecorder{Context: c, body: make([]byte, 0)}
+		m.goalHandler.CreateGoal(w)
+
+		if w.statusCode == http.StatusCreated {
+			var goalData map[string]interface{}
+			if err := json.Unmarshal(w.body, &goalData); err == nil {
+				result = goalData
+			} else {
+				result = gin.H{"status": "created"}
+			}
+		} else {
+			var errData map[string]interface{}
+			json.Unmarshal(w.body, &errData)
+			errMsg, _ = errData["error"].(string)
+		}
+
 	case "parse_task":
-		result = gin.H{
-			"title": "Example task",
-			"due_date": "2024-12-20",
-			"priority": 2,
+		input, _ := params["input"].(string)
+		userID, _ := params["user_id"].(string)
+
+		if input == "" {
+			errMsg = "input is required"
+			break
 		}
+
+		reqBody := models.ParseTaskRequest{
+			Input:  input,
+			UserID: userID,
+		}
+
+		c.Request.Body = io.NopCloser(bytes.NewBuffer(mustMarshal(reqBody)))
+		w := &responseRecorder{Context: c, body: make([]byte, 0)}
+		m.claudeHandler.ParseTask(w)
+
+		if w.statusCode == http.StatusOK {
+			var parseData map[string]interface{}
+			json.Unmarshal(w.body, &parseData)
+			result = parseData
+		} else {
+			var errData map[string]interface{}
+			json.Unmarshal(w.body, &errData)
+			errMsg, _ = errData["error"].(string)
+		}
+
 	case "generate_subtasks":
-		result = gin.H{
-			"subtasks": []string{"Subtask 1", "Subtask 2", "Subtask 3"},
+		taskTitle, _ := params["task_title"].(string)
+		taskDesc, _ := params["task_description"].(string)
+		userID, _ := params["user_id"].(string)
+
+		if taskTitle == "" {
+			errMsg = "task_title is required"
+			break
 		}
+
+		reqBody := models.GenerateSubtasksRequest{
+			TaskTitle:       taskTitle,
+			TaskDescription: taskDesc,
+			UserID:          userID,
+		}
+
+		c.Request.Body = io.NopCloser(bytes.NewBuffer(mustMarshal(reqBody)))
+		w := &responseRecorder{Context: c, body: make([]byte, 0)}
+		m.claudeHandler.GenerateSubtasks(w)
+
+		if w.statusCode == http.StatusOK {
+			var subtaskData map[string]interface{}
+			json.Unmarshal(w.body, &subtaskData)
+			result = subtaskData
+		} else {
+			var errData map[string]interface{}
+			json.Unmarshal(w.body, &errData)
+			errMsg, _ = errData["error"].(string)
+		}
+
 	case "analyze_productivity":
-		result = gin.H{
-			"completed_tasks": 10,
-			"total_tasks": 15,
-			"completion_rate": 0.67,
+		userID, _ := params["user_id"].(string)
+		days, _ := params["days"].(float64)
+
+		if userID == "" {
+			errMsg = "user_id is required"
+			break
 		}
+
+		reqBody := models.AnalyzeProductivityRequest{
+			UserID: userID,
+			Days:   int(days),
+		}
+
+		c.Request.Body = io.NopCloser(bytes.NewBuffer(mustMarshal(reqBody)))
+		w := &responseRecorder{Context: c, body: make([]byte, 0)}
+		m.claudeHandler.AnalyzeProductivity(w)
+
+		if w.statusCode == http.StatusOK {
+			var analyzeData map[string]interface{}
+			json.Unmarshal(w.body, &analyzeData)
+			result = analyzeData
+		} else {
+			var errData map[string]interface{}
+			json.Unmarshal(w.body, &errData)
+			errMsg, _ = errData["error"].(string)
+		}
+
 	default:
-		errMsg = "Unknown method"
+		errMsg = "Unknown method: " + req.Method
 	}
 
 	if errMsg != "" {
@@ -201,4 +399,22 @@ func MCPCallTool(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, response)
+}
+
+// responseRecorder captures handler responses
+type responseRecorder struct {
+	*gin.Context
+	body       []byte
+	statusCode int
+}
+
+func (r *responseRecorder) JSON(code int, obj interface{}) {
+	r.statusCode = code
+	body, _ := json.Marshal(obj)
+	r.body = body
+}
+
+func mustMarshal(v interface{}) []byte {
+	data, _ := json.Marshal(v)
+	return data
 }

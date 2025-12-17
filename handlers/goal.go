@@ -1,23 +1,28 @@
 package handlers
 
 import (
+	"encoding/json"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/productivity/mcp-server/db"
 	"github.com/productivity/mcp-server/models"
 )
 
 // GoalHandler handles goal-related requests
 type GoalHandler struct {
-	supabaseURL string
-	supabaseKey string
+	supabaseClient *db.SupabaseClient
 }
 
 // NewGoalHandler creates a new goal handler
 func NewGoalHandler(supabaseURL, supabaseKey string) *GoalHandler {
+	client, err := db.NewSupabaseClient(supabaseURL, supabaseKey)
+	if err != nil {
+		panic(err)
+	}
 	return &GoalHandler{
-		supabaseURL: supabaseURL,
-		supabaseKey: supabaseKey,
+		supabaseClient: client,
 	}
 }
 
@@ -30,37 +35,54 @@ func (h *GoalHandler) CreateGoal(c *gin.Context) {
 		return
 	}
 
-	// Get user ID from context
-	userID := c.GetString("user_id")
+	userID := getUserID(c)
 	if userID == "" {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "user_id not found in context"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "user_id required"})
 		return
 	}
 
-	// Create goal
-	goal := models.Goal{
-		UserID:      userID,
-		Title:       req.Title,
-		Description: req.Description,
-		StartDate:   req.StartDate,
-		TargetDate:  req.TargetDate,
-		Progress:    req.Progress,
+	// Convert request to map for Supabase
+	goalData := map[string]interface{}{
+		"title":       req.Title,
+		"description": req.Description,
+		"start_date":  req.StartDate.Format(time.RFC3339),
+		"target_date": req.TargetDate.Format(time.RFC3339),
+		"progress":    req.Progress,
+		"archived":    false,
+		"created_at":  time.Now().Format(time.RFC3339),
+		"updated_at":  time.Now().Format(time.RFC3339),
 	}
 
-	// TODO: Save to Supabase via REST API
-	c.JSON(http.StatusCreated, goal)
+	goalID, err := h.supabaseClient.CreateGoal(userID, goalData)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Fetch the created goal
+	goalMap, err := h.supabaseClient.GetGoal(goalID)
+	if err != nil {
+		c.JSON(http.StatusCreated, gin.H{"id": goalID, "message": "Goal created but could not fetch details"})
+		return
+	}
+
+	c.JSON(http.StatusCreated, goalMap)
 }
 
 // ListGoals lists all goals
 func (h *GoalHandler) ListGoals(c *gin.Context) {
-	userID := c.GetString("user_id")
+	userID := getUserID(c)
 	if userID == "" {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "user_id not found in context"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "user_id required"})
 		return
 	}
 
-	// TODO: Fetch from Supabase
-	goals := []models.Goal{}
+	goals, err := h.supabaseClient.GetUserGoals(userID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
 	c.JSON(http.StatusOK, goals)
 }
 
@@ -68,9 +90,10 @@ func (h *GoalHandler) ListGoals(c *gin.Context) {
 func (h *GoalHandler) GetGoal(c *gin.Context) {
 	goalID := c.Param("id")
 
-	// TODO: Fetch from Supabase
-	goal := models.Goal{
-		ID: goalID,
+	goal, err := h.supabaseClient.GetGoal(goalID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
 	}
 
 	c.JSON(http.StatusOK, goal)
@@ -86,23 +109,70 @@ func (h *GoalHandler) UpdateGoal(c *gin.Context) {
 		return
 	}
 
-	// TODO: Update in Supabase
-	c.JSON(http.StatusOK, gin.H{"id": goalID, "updated": true})
+	// Build update map from non-nil fields
+	updateData := map[string]interface{}{
+		"updated_at": time.Now().Format(time.RFC3339),
+	}
+
+	if req.Title != nil {
+		updateData["title"] = *req.Title
+	}
+	if req.Description != nil {
+		updateData["description"] = *req.Description
+	}
+	if req.StartDate != nil {
+		updateData["start_date"] = req.StartDate.Format(time.RFC3339)
+	}
+	if req.TargetDate != nil {
+		updateData["target_date"] = req.TargetDate.Format(time.RFC3339)
+	}
+	if req.Progress != nil {
+		updateData["progress"] = *req.Progress
+	}
+	if req.Archived != nil {
+		updateData["archived"] = *req.Archived
+	}
+
+	if err := h.supabaseClient.UpdateGoal(goalID, updateData); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Fetch updated goal
+	goal, err := h.supabaseClient.GetGoal(goalID)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"id": goalID, "updated": true})
+		return
+	}
+
+	c.JSON(http.StatusOK, goal)
 }
 
 // DeleteGoal deletes a goal
 func (h *GoalHandler) DeleteGoal(c *gin.Context) {
 	goalID := c.Param("id")
 
-	// TODO: Delete from Supabase
+	if err := h.supabaseClient.DeleteGoal(goalID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
 	c.JSON(http.StatusOK, gin.H{"id": goalID, "deleted": true})
 }
 
 // GetUserGoals gets all goals for a user
 func (h *GoalHandler) GetUserGoals(c *gin.Context) {
-	_ = c.Param("userId") // TODO: Use for Supabase query
+	userID := c.Param("userId")
+	if userID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "user_id parameter required"})
+		return
+	}
 
-	// TODO: Fetch from Supabase
-	goals := []models.Goal{}
+	goals, err := h.supabaseClient.GetUserGoals(userID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
 	c.JSON(http.StatusOK, goals)
 }
