@@ -26,6 +26,17 @@ Claude Desktop/iOS
   Productivity App
 ```
 
+## Documentation
+
+See [docs/README.md](docs/README.md) for complete documentation index.
+
+**Quick links:**
+- [TODO.md](TODO.md) - Current task list and priorities
+- [Setup Guides](docs/setup/) - Supabase, Railway setup
+- [Integration Guide](docs/integration/INTEGRATION.md) - Webapp integration
+- [Claude Desktop Setup](docs/reference/CLAUDE_DESKTOP_SETUP.md) - MCP server configuration
+- [Repository Structure](docs/STRUCTURE.md) - Directory layout
+
 ## Quick Start
 
 ### Prerequisites
@@ -144,6 +155,16 @@ curl -X POST http://localhost:8000/api/mcp/generate-subtasks \
     "user_id": "user-123"
   }'
 ```
+
+## Documentation
+
+See [docs/README.md](docs/README.md) for complete documentation index.
+
+Quick links:
+- [TODO.md](TODO.md) - Current task list
+- [Setup Guides](docs/setup/) - Supabase, Railway setup
+- [Integration Guide](docs/integration/INTEGRATION.md) - Webapp integration
+- [Claude Desktop Setup](docs/reference/CLAUDE_DESKTOP_SETUP.md) - MCP server configuration
 
 ## Deployment
 

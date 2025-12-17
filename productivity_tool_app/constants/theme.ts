@@ -4,29 +4,12 @@
  */
 
 import { Platform } from "react-native";
-
 // Primary brand colors
 const primaryBlue = "#0A7EA4";
 const successGreen = "#34C759";
 const warningOrange = "#FF9500";
 const dangerRed = "#FF3B30";
 const neutralGray = "#8E8E93";
-
-// Category colors
-const categoryColors = {
-  work: primaryBlue,
-  personal: "#AF52DE",
-  health: successGreen,
-  learning: warningOrange,
-};
-
-// Priority colors
-const priorityColors = {
-  high: dangerRed,
-  medium: warningOrange,
-  low: "#34C759",
-  minimal: neutralGray,
-};
 
 export const Colors = {
   light: {
@@ -66,7 +49,7 @@ export const Colors = {
 };
 
 // Export category and priority colors separately for use in components
-export { categoryColors, priorityColors };
+export { categoryColors, priorityColors } from "./theme-shared";
 
 export const Fonts = Platform.select({
   ios: {
@@ -167,12 +150,4 @@ export const Shadows = {
   },
 };
 
-// Helper function to get category color
-export const getCategoryColor = (category: keyof typeof categoryColors): string => {
-  return categoryColors[category];
-};
-
-// Helper function to get priority color
-export const getPriorityColor = (priority: keyof typeof priorityColors): string => {
-  return priorityColors[priority];
-};
+export { getCategoryColor, getPriorityColor } from "./theme-shared";

@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import textwrap
 from datetime import date
 from pathlib import Path
 from typing import Dict
 
-STATE_DIR = Path.home() / ".codex"
+STATE_DIR = Path(os.getenv("OPENAI_QUOTA_STATE_DIR") or str(Path.home() / ".codex"))
 STATE_FILE = STATE_DIR / "openai_quota.json"
 DAILY_LIMITS: Dict[str, int] = {
     "tokens_250k": 250_000,

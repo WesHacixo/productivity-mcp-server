@@ -1,0 +1,56 @@
+# Binaries
+server
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool
+*.out
+
+# Dependency directories
+vendor/
+
+# Go workspace file
+go.work
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Node modules (for productivity_tool_app)
+productivity_tool_app/node_modules/
+productivity_tool_app/.expo/
+productivity_tool_app/dist/
+productivity_tool_app/.next/
+
+# Build outputs
+productivity_tool_app/.expo-shared/
+productivity_tool_app/.expo/
+
+# Supabase
+productivity_tool_app/supabase/.temp/

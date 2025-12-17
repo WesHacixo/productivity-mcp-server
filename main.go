@@ -79,11 +79,20 @@ func main() {
 		mcp.POST("/analyze-productivity", claudeHandler.AnalyzeProductivity)
 	}
 
-	// MCP Protocol routes
+	// OAuth 2.0 endpoints for MCP authentication
+	router.GET("/oauth/authorize", handlers.OAuthAuthorize)
+	router.POST("/oauth/token", handlers.OAuthToken)
+	router.POST("/oauth/introspect", handlers.OAuthIntrospect)
+
+	// MCP Protocol routes (protected with authentication)
 	mcpHandler := handlers.NewMCPHandler(taskHandler, goalHandler, claudeHandler)
-	router.POST("/mcp/initialize", handlers.MCPInitialize)
-	router.POST("/mcp/call_tool", mcpHandler.MCPCallTool)
-	router.POST("/mcp/list_tools", handlers.MCPListTools)
+	mcpGroup := router.Group("/mcp")
+	mcpGroup.Use(middleware.AuthMiddleware()) // Require authentication for MCP endpoints
+	{
+		mcpGroup.POST("/initialize", handlers.MCPInitialize)
+		mcpGroup.POST("/call_tool", mcpHandler.MCPCallTool)
+		mcpGroup.POST("/list_tools", handlers.MCPListTools)
+	}
 
 	// Start server
 	fmt.Printf("🚀 Productivity MCP Server running on port %s\n", port)
