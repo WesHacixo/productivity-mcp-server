@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -51,6 +52,20 @@ func main() {
 
 	// Initialize Gin router
 	router := gin.New()
+	
+	// Enable route debugging in development
+	if os.Getenv("GIN_MODE") != "release" {
+		gin.DebugPrintRouteFunc = func(httpMethod, absolutePath, handlerName string, nuHandlers int) {
+			logger.Info("Route registered",
+				map[string]interface{}{
+					"method":      httpMethod,
+					"path":        absolutePath,
+					"handler":     handlerName,
+					"num_handlers": nuHandlers,
+				},
+			)
+		}
+	}
 
 	// Add recovery middleware with logging
 	router.Use(middleware.Recovery(logger))
@@ -146,21 +161,27 @@ func main() {
 		mcp.POST("/analyze-productivity", claudeHandler.AnalyzeProductivity)
 	}
 
-	// OAuth 2.1 discovery endpoint (RFC 8414)
-	router.GET("/.well-known/oauth-authorization-server", handlers.OAuthDiscovery)
-
 	// OAuth 2.1 endpoints for MCP authentication
-	// Support both /authorize and /oauth/authorize (common OAuth patterns)
+	// Register OAuth routes BEFORE MCP routes to ensure they're matched first
 	// #region agent log
 	logger.Info("Registering OAuth routes", map[string]interface{}{
 		"routes": []string{"/.well-known/oauth-authorization-server", "/authorize", "/oauth/authorize", "/oauth/token"},
 	})
 	// #endregion
+	
+	// OAuth 2.1 discovery endpoint (RFC 8414) - must be exact path match
+	router.GET("/.well-known/oauth-authorization-server", handlers.OAuthDiscovery)
+	
+	// OAuth authorization endpoints - support both patterns
 	router.GET("/authorize", handlers.OAuthAuthorize)
 	router.GET("/oauth/authorize", handlers.OAuthAuthorize)
+	
+	// OAuth token and management endpoints
 	router.POST("/oauth/token", handlers.OAuthToken)
 	router.POST("/oauth/introspect", handlers.OAuthIntrospect)
 	router.POST("/oauth/register", handlers.OAuthRegister) // Client registration
+	
+	logger.Info("OAuth routes registered successfully")
 
 	// MCP Protocol routes (protected with authentication)
 	mcpHandler := handlers.NewMCPHandler(taskHandler, goalHandler, claudeHandler)
@@ -171,6 +192,22 @@ func main() {
 		mcpGroup.POST("/call_tool", mcpHandler.MCPCallTool)
 		mcpGroup.POST("/list_tools", handlers.MCPListTools)
 	}
+
+	// 404 handler for debugging - log all unmatched routes
+	router.NoRoute(func(c *gin.Context) {
+		logger.Warn("Route not found",
+			map[string]interface{}{
+				"method": c.Request.Method,
+				"path":   c.Request.URL.Path,
+				"query":  c.Request.URL.RawQuery,
+			},
+		)
+		c.JSON(http.StatusNotFound, gin.H{
+			"error":   "not_found",
+			"message": fmt.Sprintf("Route %s %s not found", c.Request.Method, c.Request.URL.Path),
+			"path":    c.Request.URL.Path,
+		})
+	})
 
 	// Create HTTP server with timeouts
 	srv := &http.Server{

@@ -26,7 +26,13 @@ func debugLog(location, message string, data map[string]interface{}) {
 		"timestamp": time.Now().UnixMilli(),
 	}
 	if logData, err := json.Marshal(logEntry); err == nil {
-		if f, err := os.OpenFile("/Users/damian/Projects/productivity-mcp-server/.cursor/debug.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
+		// Use relative path or environment variable for log file
+		logPath := os.Getenv("DEBUG_LOG_PATH")
+		if logPath == "" {
+			// Default to relative path (works in both local and Railway)
+			logPath = ".cursor/debug.log"
+		}
+		if f, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
 			fmt.Fprintln(f, string(logData))
 			f.Close()
 		}
