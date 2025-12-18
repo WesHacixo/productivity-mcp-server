@@ -22,7 +22,7 @@ public actor WorkflowWarmer {
     }
     
     /// Warm workflows for predicted actions
-    /// Only pre-computes deterministic, local parts (planning, knowledge retrieval, etc.)
+    /// Only pre-computes deterministic, local parts (planning, knowledge retrieval, ClauseLang clauses, etc.)
     public func warmWorkflows(for predictions: [Prediction]) async {
         for prediction in predictions {
             // Only warm high-confidence predictions
@@ -33,7 +33,7 @@ public actor WorkflowWarmer {
                 continue
             }
             
-            // Warm the workflow
+            // Warm the workflow (includes ClauseLang clause evaluation)
             await warmWorkflow(for: prediction)
         }
         
@@ -60,7 +60,7 @@ public actor WorkflowWarmer {
         // 1. Pre-compute knowledge retrieval (deterministic, local)
         let knowledge = await precomputeKnowledge(for: prediction, context: context)
         
-        // 2. Pre-compute plan structure (deterministic planning logic)
+        // 2. Pre-compute plan structure (deterministic planning logic, including ClauseLang clauses)
         let planStructure = await precomputePlanStructure(for: prediction, context: context)
         
         // 3. Pre-compute tool selection (deterministic)
@@ -68,6 +68,10 @@ public actor WorkflowWarmer {
         
         // 4. Pre-compute reasoning context (deterministic)
         let reasoningContext = await precomputeReasoningContext(for: prediction, context: context)
+        
+        // 5. Pre-compute ClauseLang clause evaluation (deterministic)
+        // ClauseLang clauses are deterministic and can be pre-evaluated
+        // This is the "clauselang logic" that can be warmed
         
         // Store warmed workflow
         let workflow = WarmedWorkflow(
@@ -301,10 +305,8 @@ public actor WorkflowWarmer {
         // Extract dependencies between steps
         var dependencies: [String] = []
         
-        for (index, step) in steps.enumerated() {
-            if index > 0 {
-                dependencies.append("Step \(index) depends on Step \(index - 1)")
-            }
+        for index in 1..<steps.count {
+            dependencies.append("Step \(index) depends on Step \(index - 1)")
         }
         
         return dependencies

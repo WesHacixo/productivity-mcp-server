@@ -11,6 +11,8 @@ final class AgentConsoleViewModel: ObservableObject {
     @Published var insights: [Insight] = []
     @Published var anticipatedNeeds: [AnticipatedNeed] = []
     @Published var showingInsights = false
+    @Published var showingClauseInspector = false
+    @Published var lastFlowstateResult: FlowstateScheduleResult?
     
     private let memory = AgentMemory()
     private let tools = ToolRegistry()
@@ -68,6 +70,13 @@ final class AgentConsoleViewModel: ObservableObject {
         tasksTool: tasksTool
     )
     
+    // ClauseLang and Flowstate components
+    private lazy var clauseLang = ClauseLang()
+    private lazy var flowstateScheduler = FlowstateScheduler(
+        clauseLang: clauseLang,
+        schedulingReasoner: schedulingReasoner
+    )
+    
     // Proactive AI components
     private lazy var patternLearner = PatternLearner()
     private lazy var predictor = PredictiveEngine(patternLearner: patternLearner, workflowWarmer: workflowWarmer)
@@ -98,6 +107,13 @@ final class AgentConsoleViewModel: ObservableObject {
             
             // Connect workflow warmer to predictor
             await predictor.setWorkflowWarmer(workflowWarmer)
+            
+            // Initialize FlowstateScheduler with default contracts
+            await flowstateScheduler.addContract(FlowstateContracts.deepWorkContract)
+            await flowstateScheduler.addContract(FlowstateContracts.meetingContract)
+            await flowstateScheduler.addContract(FlowstateContracts.recoveryContract)
+            await flowstateScheduler.addContract(FlowstateContracts.entropyContract)
+            await flowstateScheduler.addContract(FlowstateContracts.preferenceContract)
             
             // Load recent messages
             let recent = await memory.recent()
@@ -169,8 +185,19 @@ final class AgentConsoleViewModel: ObservableObject {
                 )
                 
                 if isSchedulingRequest {
-                    // Use scheduling reasoner - handles all complexity automatically
-                    let result = try await schedulingReasoner.schedule(text)
+                    // Use FlowstateScheduler for flow-cost optimization and ClauseLang contracts
+                    let flowstate = buildUserFlowstate()
+                    let constraints = SchedulingConstraints(
+                        allowAutoWrite: true,
+                        minBlockDurationMinutes: 30,
+                        maxContextSwitches: 5
+                    )
+                    
+                    let flowstateResult = try await flowstateScheduler.scheduleWithFlowstate(
+                        request: text,
+                        userFlowstate: flowstate,
+                        constraints: constraints
+                    )
                     
                     // Learn from action
                     let action = UserAction(
@@ -182,11 +209,28 @@ final class AgentConsoleViewModel: ObservableObject {
                     await proactiveAssistant.learnFromAction(action: action, context: context)
                     
                     await MainActor.run {
-                        self.messages.append(AgentMessage(
-                            role: .assistant,
-                            content: result.message,
-                            timestamp: Date()
-                        ))
+                        if let schedule = flowstateResult.schedule {
+                            self.messages.append(AgentMessage(
+                                role: .assistant,
+                                content: schedule.message,
+                                timestamp: Date()
+                            ))
+                        } else {
+                            self.messages.append(AgentMessage(
+                                role: .assistant,
+                                content: flowstateResult.message,
+                                timestamp: Date()
+                            ))
+                        }
+                        
+                        // Store flowstate result for clause inspector
+                        self.lastFlowstateResult = flowstateResult
+                        
+                        // Show clause inspector if clauses were executed
+                        if !flowstateResult.clauses.isEmpty {
+                            self.showingClauseInspector = true
+                        }
+                        
                         self.isProcessing = false
                     }
                 } else {
@@ -248,6 +292,25 @@ final class AgentConsoleViewModel: ObservableObject {
     func askQuestion(_ question: String) async throws -> KnowledgeAnswer {
         return try await agent.answer(question)
     }
+    
+    private func buildUserFlowstate() -> UserFlowstate {
+        // Build user flowstate from current context
+        // TODO: Load from actual user state
+        return UserFlowstate(
+            focusMode: .general,
+            currentFlowCost: 0.0,
+            pendingNotes: [],
+            pendingTasks: [],
+            normalizedReady: true,
+            clustersReady: true,
+            rankedReady: true,
+            scheduleValid: true
+        )
+    }
+    
+    func resetEntropy() async {
+        await flowstateScheduler.resetEntropy()
+    }
 }
 
 struct AgentConsoleView: View {
@@ -302,7 +365,12 @@ struct AgentConsoleView: View {
             }
             .navigationTitle("Agent Console")
             .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
+                ToolbarItemGroup(placement: .navigationBarTrailing) {
+                    if viewModel.lastFlowstateResult != nil && !viewModel.lastFlowstateResult!.clauses.isEmpty {
+                        Button(action: { viewModel.showingClauseInspector = true }) {
+                            Image(systemName: "doc.text.magnifyingglass")
+                        }
+                    }
                     Button(action: { viewModel.showingInsights.toggle() }) {
                         Image(systemName: "lightbulb")
                     }
@@ -310,6 +378,15 @@ struct AgentConsoleView: View {
             }
             .sheet(isPresented: $viewModel.showingInsights) {
                 InsightsView(insights: viewModel.insights)
+            }
+            .sheet(isPresented: $viewModel.showingClauseInspector) {
+                if let result = viewModel.lastFlowstateResult {
+                    ClauseInspectorView(
+                        executedClauses: result.clauses,
+                        flowCost: result.flowCost,
+                        entropy: result.entropy
+                    )
+                }
             }
         }
     }

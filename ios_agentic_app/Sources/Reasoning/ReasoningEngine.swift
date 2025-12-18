@@ -13,6 +13,7 @@ public actor ReasoningEngine {
     private var currentContext: ReasoningContext?
     
     private let mlxLLM: MLXLLM?
+    private let workflowWarmer: WorkflowWarmer?
     private let clauseLangPolicy: ClauseLangPolicy?
     
     public init(
@@ -21,6 +22,7 @@ public actor ReasoningEngine {
         tools: ToolRegistry,
         memory: AgentMemory,
         mlxLLM: MLXLLM? = nil,
+        workflowWarmer: WorkflowWarmer? = nil,
         clauseLangPolicy: ClauseLangPolicy? = nil
     ) {
         self.planner = planner
@@ -28,25 +30,8 @@ public actor ReasoningEngine {
         self.tools = tools
         self.memory = memory
         self.mlxLLM = mlxLLM
-        self.clauseLangPolicy = clauseLangPolicy
-    }
-    
-    private let workflowWarmer: WorkflowWarmer?
-    
-    public init(
-        planner: AgentPlanner,
-        knowledgeBase: KnowledgeEscort,
-        tools: ToolRegistry,
-        memory: AgentMemory,
-        mlxLLM: MLXLLM? = nil,
-        workflowWarmer: WorkflowWarmer? = nil
-    ) {
-        self.planner = planner
-        self.knowledgeBase = knowledgeBase
-        self.tools = tools
-        self.memory = memory
-        self.mlxLLM = mlxLLM
         self.workflowWarmer = workflowWarmer
+        self.clauseLangPolicy = clauseLangPolicy
     }
     
     /// Main reasoning loop: understand → plan → execute → reflect → integrate knowledge
