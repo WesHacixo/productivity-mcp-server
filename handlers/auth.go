@@ -541,8 +541,26 @@ func OAuthToken(c *gin.Context) {
 			return
 		}
 
-		// Validate redirect_uri matches (if provided)
-		if req.RedirectURI != "" && req.RedirectURI != authCodeData.RedirectURI {
+		// Validate redirect_uri matches (REQUIRED per Cloudflare CVE-2025-4143)
+		// Must validate redirect_uri in token exchange to prevent open redirect attacks
+		if req.RedirectURI == "" {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error":             "invalid_request",
+				"error_description": "redirect_uri is required in token exchange",
+			})
+			return
+		}
+		
+		// Exact match required (per Cloudflare security requirements)
+		if req.RedirectURI != authCodeData.RedirectURI {
+			// #region agent log
+			debugLog("auth.go:551", "OAuthToken error: redirect_uri mismatch", map[string]interface{}{
+				"requested":  req.RedirectURI,
+				"stored":     authCodeData.RedirectURI,
+				"match":      false,
+				"hypothesisId": "H6",
+			})
+			// #endregion
 			c.JSON(http.StatusBadRequest, gin.H{
 				"error":             "invalid_grant",
 				"error_description": "redirect_uri does not match the one used in authorization",

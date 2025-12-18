@@ -20,11 +20,14 @@ var defaultClients = map[string]*OAuthClient{
 		ClientID:     "claude-desktop",
 		ClientSecret: "claude-desktop-secret-dev", // In production, use sealed variable
 		RedirectURIs: []string{
-			"http://localhost",
-			"https://claude.ai",
+			// Official Claude Desktop redirect URIs (per Cloudflare/Anthropic spec)
 			"https://claude.ai/api/mcp/auth_callback",
 			"https://claude.com/api/mcp/auth_callback",
 			"claude://oauth-callback",
+			// Development URIs
+			"http://localhost",
+			"http://localhost:8080",
+			"https://claude.ai", // Fallback for some implementations
 		},
 		Name: "Claude Desktop",
 	},
@@ -109,15 +112,19 @@ func validateRedirectURI(clientID, redirectURI string) bool {
 		}
 	}
 	// For development, allow common redirect URIs (including Claude's official URIs)
+	// Per Cloudflare security requirements: exact match only, no wildcards
 	commonURIs := []string{
-		"http://localhost",
-		"https://claude.ai",
+		// Official Claude Desktop URIs (exact match required)
 		"https://claude.ai/api/mcp/auth_callback",
 		"https://claude.com/api/mcp/auth_callback",
 		"claude://oauth-callback",
-		"https://example.com",
+		// Development URIs
+		"http://localhost",
+		"http://localhost:8080",
+		"https://claude.ai", // Some implementations use root
 	}
 	for _, uri := range commonURIs {
+		// Exact match required (per Cloudflare CVE-2025-4143)
 		if redirectURI == uri {
 			return true
 		}
