@@ -89,6 +89,12 @@
 - [ ] Add proper error types
 - [ ] Improve error messages
 
+### 10. Research & Design Inspiration
+- [ ] Research Structured app (Apple finalist) features and UX
+- [ ] Document feature comparison with Structured
+- [ ] Identify award-winning design patterns to adopt
+- [ ] Update design document with learnings
+
 ## 📋 Quick Reference
 
 ### Environment Variables Needed

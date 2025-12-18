@@ -46,6 +46,8 @@
 - **[SECURITY_FIXES.md](reference/SECURITY_FIXES.md)** - Security improvements made
 - **[CURRENT_STATUS.md](reference/CURRENT_STATUS.md)** - Current project status
 - **[NEXT_STEPS.md](reference/NEXT_STEPS.md)** - Next steps guide
+- **[STRUCTURED_APP_COMPARISON.md](reference/STRUCTURED_APP_COMPARISON.md)** - Detailed comparison with Structured app (Apple finalist)
+- **[STRUCTURED_INSIGHTS_SUMMARY.md](reference/STRUCTURED_INSIGHTS_SUMMARY.md)** - Key insights and actionable recommendations from Structured research
 
 ## 🔍 Other
 - **[AGENTS.md](../AGENTS.md)** - Agent configuration
