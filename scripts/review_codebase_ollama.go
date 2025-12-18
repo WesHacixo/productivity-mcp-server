@@ -1,3 +1,6 @@
+//go:build tools
+// +build tools
+
 package main
 
 import (
@@ -78,7 +81,7 @@ func main() {
 		}
 		chunk := files[i:end]
 
-		fmt.Printf("📝 Reviewing chunk %d/%d (%d files)...\n", (i / *chunkSize) + 1, (len(files) + *chunkSize - 1) / *chunkSize, len(chunk))
+		fmt.Printf("📝 Reviewing chunk %d/%d (%d files)...\n", (i / *chunkSize)+1, (len(files)+*chunkSize-1) / *chunkSize, len(chunk))
 
 		review, err := reviewChunk(ollamaClient, chunk, *basePath, focusList)
 		if err != nil {

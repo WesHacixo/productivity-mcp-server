@@ -1,3 +1,6 @@
+//go:build tools
+// +build tools
+
 package main
 
 import (
@@ -118,7 +121,7 @@ func main() {
 			fmt.Printf("   💡 You might want to use one of these instead\n")
 		}
 		fmt.Printf("   Available models: %v\n", models)
-		
+
 		// Suggest common coder models
 		fmt.Printf("\n   💡 Popular coding models you can install:\n")
 		fmt.Printf("      - qwen3-coder:480b-cloud (cloud model - should be on Mac Studio)\n")
@@ -127,7 +130,7 @@ func main() {
 		fmt.Printf("      - stable-code\n")
 		fmt.Printf("      - codellama\n")
 		fmt.Printf("\n   📝 Note: Mac Studio should already have qwen3-coder:480b-cloud installed\n")
-		
+
 		fmt.Printf("\n   📥 To install a coder model, run:\n")
 		fmt.Printf("      ollama pull deepseek-coder\n")
 		fmt.Printf("   Or for cloud models:\n")
