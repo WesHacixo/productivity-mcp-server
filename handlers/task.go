@@ -48,6 +48,24 @@ func (h *TaskHandler) CreateTask(c *gin.Context) {
 		return
 	}
 
+	// Validate required fields
+	if req.Title == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "title is required"})
+		return
+	}
+
+	// Validate priority range (assuming 1-5 scale)
+	if req.Priority < 1 || req.Priority > 5 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "priority must be between 1 and 5"})
+		return
+	}
+
+	// Validate due date is in the future (optional check)
+	if req.DueDate.Before(time.Now()) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "due_date must be in the future"})
+		return
+	}
+
 	userID := getUserID(c)
 	if userID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "user_id required (provide via query param ?user_id=xxx, header X-User-ID, or context)"})
@@ -111,6 +129,10 @@ func (h *TaskHandler) ListTasks(c *gin.Context) {
 // GetTask gets a specific task
 func (h *TaskHandler) GetTask(c *gin.Context) {
 	taskID := c.Param("id")
+	if taskID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "task id is required"})
+		return
+	}
 
 	task, err := h.supabaseClient.GetTask(taskID)
 	if err != nil {
@@ -124,10 +146,20 @@ func (h *TaskHandler) GetTask(c *gin.Context) {
 // UpdateTask updates a task
 func (h *TaskHandler) UpdateTask(c *gin.Context) {
 	taskID := c.Param("id")
-	var req models.UpdateTaskRequest
+	if taskID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "task id is required"})
+		return
+	}
 
+	var req models.UpdateTaskRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Validate priority range if provided
+	if req.Priority != nil && (*req.Priority < 1 || *req.Priority > 5) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "priority must be between 1 and 5"})
 		return
 	}
 
@@ -191,6 +223,10 @@ func (h *TaskHandler) UpdateTask(c *gin.Context) {
 // DeleteTask deletes a task
 func (h *TaskHandler) DeleteTask(c *gin.Context) {
 	taskID := c.Param("id")
+	if taskID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "task id is required"})
+		return
+	}
 
 	if err := h.supabaseClient.DeleteTask(taskID); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})

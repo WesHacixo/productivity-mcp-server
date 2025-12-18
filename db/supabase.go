@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 )
 
 // SupabaseClient wraps HTTP client for Supabase REST API
@@ -16,6 +17,7 @@ type SupabaseClient struct {
 	baseURL    string
 	apiKey     string
 	httpClient *http.Client
+	timeout    time.Duration
 }
 
 // NewSupabaseClient creates a new Supabase client
@@ -31,10 +33,12 @@ func NewSupabaseClient(supabaseURL, supabaseKey string) (*SupabaseClient, error)
 
 	log.Printf("Supabase client initialized for: %s", baseURL)
 
+	timeout := 30 * time.Second
 	return &SupabaseClient{
 		baseURL:    baseURL,
 		apiKey:     supabaseKey,
-		httpClient: &http.Client{},
+		httpClient: &http.Client{Timeout: timeout},
+		timeout:    timeout,
 	}, nil
 }
 

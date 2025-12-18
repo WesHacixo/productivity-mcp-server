@@ -4,7 +4,9 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"fmt"
+	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"time"
 
@@ -14,11 +16,27 @@ import (
 
 var jwtSecret = getJWTSecret()
 
+const (
+	// Token expiration constants
+	AccessTokenExpiration  = 3600  // 1 hour in seconds
+	RefreshTokenExpiration = 2592000 // 30 days in seconds
+	AuthCodeExpiration     = 600    // 10 minutes in seconds
+)
+
 func getJWTSecret() []byte {
 	secret := os.Getenv("JWT_SECRET")
 	if secret == "" {
-		// Generate a random secret for development (NOT for production!)
-		secret = "dev-secret-change-in-production"
+		// In production, this should be a fatal error
+		if os.Getenv("GIN_MODE") == "release" {
+			log.Fatal("JWT_SECRET environment variable is required in production mode")
+		}
+		// Generate a random secret for development only
+		bytes := make([]byte, 32)
+		if _, err := rand.Read(bytes); err != nil {
+			log.Fatal("Failed to generate development JWT secret: ", err)
+		}
+		secret = base64.URLEncoding.EncodeToString(bytes)
+		log.Println("⚠️  WARNING: Using auto-generated JWT secret for development. Set JWT_SECRET in production!")
 	}
 	return []byte(secret)
 }
@@ -47,27 +65,82 @@ func OAuthAuthorize(c *gin.Context) {
 	clientID := c.Query("client_id")
 	redirectURI := c.Query("redirect_uri")
 	responseType := c.Query("response_type")
-	_ = c.Query("scope") // scope - stored for future use
+	scope := c.Query("scope")
 	state := c.Query("state")
 
 	// Validate required parameters
-	if clientID == "" || redirectURI == "" || responseType != "code" {
+	if clientID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error":             "invalid_request",
-			"error_description": "Missing required parameters",
+			"error_description": "client_id is required",
 		})
 		return
 	}
 
-	// TODO: Validate client_id against registered clients
-	// TODO: Validate redirect_uri
+	if redirectURI == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":             "invalid_request",
+			"error_description": "redirect_uri is required",
+		})
+		return
+	}
+
+	// Validate redirect_uri format
+	parsedURI, err := url.Parse(redirectURI)
+	if err != nil || !parsedURI.IsAbs() {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":             "invalid_request",
+			"error_description": "redirect_uri must be a valid absolute URL",
+		})
+		return
+	}
+
+	// Only allow http/https schemes
+	if parsedURI.Scheme != "http" && parsedURI.Scheme != "https" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":             "invalid_request",
+			"error_description": "redirect_uri must use http or https scheme",
+		})
+		return
+	}
+
+	if responseType != "code" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":             "unsupported_response_type",
+			"error_description": "Only 'code' response_type is supported",
+		})
+		return
+	}
+
+	// Validate state parameter (CSRF protection)
+	if state == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":             "invalid_request",
+			"error_description": "state parameter is required for CSRF protection",
+		})
+		return
+	}
+
+	// Validate client_id (check default clients or database)
+	if !validateClient(clientID, "") {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":             "invalid_client",
+			"error_description": "Unknown client_id. Use 'claude-desktop' or 'mcp_client' for development, or register a new client via /oauth/register",
+		})
+		return
+	}
+
+	// Validate redirect_uri
+	if !validateRedirectURI(clientID, redirectURI) {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":             "invalid_request",
+			"error_description": "redirect_uri not registered for this client",
+		})
+		return
+	}
 	// TODO: Check if user is authenticated (if not, redirect to login)
 
-	// For now, generate an authorization code
-	// In production, this should:
-	// 1. Show a consent screen
-	// 2. Require user authentication
-	// 3. Generate a secure, short-lived authorization code
+	// Generate an authorization code
 	authCode, err := generateAuthCode(clientID, redirectURI)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
@@ -77,9 +150,25 @@ func OAuthAuthorize(c *gin.Context) {
 		return
 	}
 
-	// Redirect back with authorization code
-	redirectURL := redirectURI + "?code=" + authCode + "&state=" + state
-	c.Redirect(http.StatusFound, redirectURL)
+	// Build redirect URL with proper encoding
+	redirectURL, err := url.Parse(redirectURI)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":             "invalid_request",
+			"error_description": "Invalid redirect_uri",
+		})
+		return
+	}
+
+	q := redirectURL.Query()
+	q.Set("code", authCode)
+	q.Set("state", state)
+	if scope != "" {
+		q.Set("scope", scope)
+	}
+	redirectURL.RawQuery = q.Encode()
+
+	c.Redirect(http.StatusFound, redirectURL.String())
 }
 
 // OAuthToken handles OAuth token endpoint
@@ -105,16 +194,28 @@ func OAuthToken(c *gin.Context) {
 			return
 		}
 
-		// TODO: Validate authorization code
-		// TODO: Check code hasn't been used
-		// TODO: Verify client_id and client_secret
+		// Validate client_id and client_secret if provided
+		if req.ClientID != "" {
+			if !validateClient(req.ClientID, req.ClientSecret) {
+				c.JSON(http.StatusBadRequest, gin.H{
+					"error":             "invalid_client",
+					"error_description": "Invalid client_id or client_secret",
+				})
+				return
+			}
+		}
+
+		// TODO: Validate authorization code against database/cache
+		// TODO: Check code hasn't been used (one-time use)
+		// TODO: Check code hasn't expired
+		// TODO: Verify redirect_uri matches the one used in authorization
 
 		// Generate access token
 		accessToken, err := generateAccessToken(req.Code)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{
 				"error":             "invalid_grant",
-				"error_description": "Invalid authorization code",
+				"error_description": fmt.Sprintf("Invalid authorization code: %v", err),
 			})
 			return
 		}
@@ -131,7 +232,7 @@ func OAuthToken(c *gin.Context) {
 		c.JSON(http.StatusOK, OAuthTokenResponse{
 			AccessToken:  accessToken,
 			TokenType:    "Bearer",
-			ExpiresIn:    3600, // 1 hour
+			ExpiresIn:    AccessTokenExpiration,
 			RefreshToken: refreshToken,
 			Scope:        "read write",
 		})
@@ -146,14 +247,16 @@ func OAuthToken(c *gin.Context) {
 			return
 		}
 
-		// TODO: Validate refresh token
-		// TODO: Check if refresh token is expired/revoked
+		// TODO: Validate refresh token against database
+		// TODO: Check if refresh token is expired
+		// TODO: Check if refresh token is revoked
+		// TODO: Implement refresh token rotation (optional but recommended)
 
 		accessToken, err := refreshAccessToken(req.RefreshToken)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{
 				"error":             "invalid_grant",
-				"error_description": "Invalid refresh token",
+				"error_description": fmt.Sprintf("Invalid refresh token: %v", err),
 			})
 			return
 		}
@@ -161,7 +264,7 @@ func OAuthToken(c *gin.Context) {
 		c.JSON(http.StatusOK, OAuthTokenResponse{
 			AccessToken: accessToken,
 			TokenType:   "Bearer",
-			ExpiresIn:   3600,
+			ExpiresIn:   AccessTokenExpiration,
 		})
 
 	default:
@@ -215,25 +318,50 @@ func OAuthIntrospect(c *gin.Context) {
 
 func generateAuthCode(clientID, redirectURI string) (string, error) {
 	// Generate secure, random authorization code
-	// TODO: Store in database/cache with expiration (10 minutes)
+	// TODO: Store in database/cache with expiration (AuthCodeExpiration)
+	// Should store: code, client_id, redirect_uri, user_id, scope, expires_at
+	
 	bytes := make([]byte, 32)
 	if _, err := rand.Read(bytes); err != nil {
 		return "", fmt.Errorf("failed to generate authorization code: %w", err)
 	}
-	return base64.URLEncoding.EncodeToString(bytes), nil
+	
+	code := base64.URLEncoding.EncodeToString(bytes)
+	
+	// TODO: Store code in database/cache:
+	// - code: the generated code
+	// - client_id: for validation
+	// - redirect_uri: must match on token exchange
+	// - user_id: from authenticated session
+	// - scope: requested scope
+	// - expires_at: time.Now().Add(AuthCodeExpiration * time.Second)
+	// - used: false (set to true when exchanged)
+	
+	return code, nil
 }
 
 func generateAccessToken(authCode string) (string, error) {
 	// TODO: Validate authCode and get user info from database/cache
 	// For now, generate a JWT token with placeholder user ID
 	// In production, look up authCode in database to get user_id
+	
+	// Validate authCode is not empty (basic validation)
+	if authCode == "" {
+		return "", fmt.Errorf("authorization code cannot be empty")
+	}
+
+	// TODO: Look up authCode in database/cache to get:
+	// - user_id
+	// - client_id
+	// - scope
+	// - Validate code hasn't been used and isn't expired
 
 	claims := jwt.MapClaims{
 		"sub":       "user_id_from_authcode", // TODO: Get from authCode lookup
-		"client_id": "mcp_client",
-		"scope":     "read write",
+		"client_id": "mcp_client",            // TODO: Get from authCode lookup
+		"scope":     "read write",            // TODO: Get from authCode lookup
 		"iat":       time.Now().Unix(),
-		"exp":       time.Now().Add(time.Hour).Unix(),
+		"exp":       time.Now().Add(time.Duration(AccessTokenExpiration) * time.Second).Unix(),
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
@@ -242,19 +370,50 @@ func generateAccessToken(authCode string) (string, error) {
 
 func generateRefreshToken() (string, error) {
 	// Generate secure, random refresh token
-	// TODO: Store in database with expiration (30 days)
+	// TODO: Store in database with expiration (RefreshTokenExpiration)
+	// Should store: token, user_id, client_id, scope, expires_at, revoked
+	
 	bytes := make([]byte, 32)
 	if _, err := rand.Read(bytes); err != nil {
 		return "", fmt.Errorf("failed to generate refresh token: %w", err)
 	}
-	return base64.URLEncoding.EncodeToString(bytes), nil
+	
+	token := base64.URLEncoding.EncodeToString(bytes)
+	
+	// TODO: Store refresh token in database:
+	// - token: the generated token
+	// - user_id: from the access token
+	// - client_id: from the access token
+	// - scope: from the access token
+	// - expires_at: time.Now().Add(RefreshTokenExpiration * time.Second)
+	// - revoked: false (set to true when revoked)
+	// - created_at: time.Now()
+	
+	return token, nil
 }
 
 func refreshAccessToken(refreshToken string) (string, error) {
-	// TODO: Validate refresh token
-	// TODO: Get user info from refresh token
-	// Generate new access token
-	return generateAccessToken("")
+	// Validate refresh token is not empty
+	if refreshToken == "" {
+		return "", fmt.Errorf("refresh token cannot be empty")
+	}
+
+	// TODO: Validate refresh token against database/cache
+	// TODO: Check if refresh token is expired or revoked
+	// TODO: Get user info from refresh token lookup
+	// TODO: Invalidate old refresh token (one-time use)
+
+	// For now, generate a new access token
+	// In production, we should:
+	// 1. Look up refreshToken in database
+	// 2. Verify it's valid and not expired
+	// 3. Get user_id and client_id from the stored token
+	// 4. Generate new access token with proper user info
+	// 5. Optionally generate new refresh token (refresh token rotation)
+
+	// Use refreshToken as a placeholder authCode for now
+	// This is a temporary workaround until proper token storage is implemented
+	return generateAccessToken(refreshToken)
 }
 
 func validateJWT(tokenString string) (jwt.MapClaims, error) {

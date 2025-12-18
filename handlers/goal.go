@@ -34,6 +34,24 @@ func (h *GoalHandler) CreateGoal(c *gin.Context) {
 		return
 	}
 
+	// Validate required fields
+	if req.Title == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "title is required"})
+		return
+	}
+
+	// Validate date range
+	if req.TargetDate.Before(req.StartDate) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "target_date must be after start_date"})
+		return
+	}
+
+	// Validate progress range (0-100)
+	if req.Progress < 0 || req.Progress > 100 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "progress must be between 0 and 100"})
+		return
+	}
+
 	userID := getUserID(c)
 	if userID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "user_id required"})
@@ -88,6 +106,10 @@ func (h *GoalHandler) ListGoals(c *gin.Context) {
 // GetGoal gets a specific goal
 func (h *GoalHandler) GetGoal(c *gin.Context) {
 	goalID := c.Param("id")
+	if goalID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "goal id is required"})
+		return
+	}
 
 	goal, err := h.supabaseClient.GetGoal(goalID)
 	if err != nil {
@@ -101,10 +123,26 @@ func (h *GoalHandler) GetGoal(c *gin.Context) {
 // UpdateGoal updates a goal
 func (h *GoalHandler) UpdateGoal(c *gin.Context) {
 	goalID := c.Param("id")
-	var req models.UpdateGoalRequest
+	if goalID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "goal id is required"})
+		return
+	}
 
+	var req models.UpdateGoalRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Validate progress range if provided
+	if req.Progress != nil && (*req.Progress < 0 || *req.Progress > 100) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "progress must be between 0 and 100"})
+		return
+	}
+
+	// Validate date range if both dates are provided
+	if req.StartDate != nil && req.TargetDate != nil && req.TargetDate.Before(*req.StartDate) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "target_date must be after start_date"})
 		return
 	}
 
@@ -150,6 +188,10 @@ func (h *GoalHandler) UpdateGoal(c *gin.Context) {
 // DeleteGoal deletes a goal
 func (h *GoalHandler) DeleteGoal(c *gin.Context) {
 	goalID := c.Param("id")
+	if goalID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "goal id is required"})
+		return
+	}
 
 	if err := h.supabaseClient.DeleteGoal(goalID); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})

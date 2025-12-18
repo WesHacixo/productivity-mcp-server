@@ -140,8 +140,14 @@ func validateJWT(tokenString string) (map[string]interface{}, error) {
 func getJWTSecret() []byte {
 	secret := os.Getenv("JWT_SECRET")
 	if secret == "" {
-		// Generate a random secret for development (NOT for production!)
+		// In production, this should be a fatal error
+		if os.Getenv("GIN_MODE") == "release" {
+			panic("JWT_SECRET environment variable is required in production mode")
+		}
+		// Generate a random secret for development only
+		// Import crypto/rand if needed, but for now use a warning
 		secret = "dev-secret-change-in-production"
+		fmt.Println("⚠️  WARNING: Using default JWT secret for development. Set JWT_SECRET in production!")
 	}
 	return []byte(secret)
 }

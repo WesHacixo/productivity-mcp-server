@@ -1,0 +1,42 @@
+{
+  "name": "Productivity",
+  "short_name": "Productivity",
+  "description": "Productivity management app with task and goal tracking",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#000000",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/assets/images/icon.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/assets/images/icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["productivity", "utilities"],
+  "screenshots": [],
+  "shortcuts": [
+    {
+      "name": "Tasks",
+      "short_name": "Tasks",
+      "description": "View and manage tasks",
+      "url": "/tasks",
+      "icons": [{ "src": "/assets/images/icon.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Goals",
+      "short_name": "Goals",
+      "description": "View and manage goals",
+      "url": "/goals",
+      "icons": [{ "src": "/assets/images/icon.png", "sizes": "192x192" }]
+    }
+  ]
+}

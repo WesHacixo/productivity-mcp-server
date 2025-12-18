@@ -66,6 +66,25 @@ const config: ExpoConfig = {
   web: {
     output: "static",
     favicon: "./assets/images/favicon.png",
+    manifest: {
+      name: env.appName,
+      short_name: "Productivity",
+      description: "Productivity management app with task and goal tracking",
+      start_url: "/",
+      display: "standalone",
+      background_color: "#ffffff",
+      theme_color: "#000000",
+      orientation: "portrait",
+      icons: [
+        {
+          src: "./assets/images/icon.png",
+          sizes: [192, 512],
+          type: "image/png",
+          purpose: "any maskable",
+        },
+      ],
+    },
+    bundler: "metro",
   },
   plugins: [
     "expo-router",

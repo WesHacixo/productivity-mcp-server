@@ -1,6 +1,8 @@
 // Clipboard tool for reading/writing clipboard
 import Foundation
+#if canImport(UIKit)
 import UIKit
+#endif
 
 public struct ClipboardTool: AgentTool {
     public let name = "clipboard"
@@ -29,15 +31,23 @@ public struct ClipboardTool: AgentTool {
     }
     
     private func readClipboard() async -> String {
+        #if canImport(UIKit)
         await MainActor.run {
             UIPasteboard.general.string ?? ""
         }
+        #else
+        return "Clipboard not available on this platform"
+        #endif
     }
     
     private func writeClipboard(text: String) async -> String {
+        #if canImport(UIKit)
         await MainActor.run {
             UIPasteboard.general.string = text
             return "Wrote \(text.count) characters to clipboard"
         }
+        #else
+        return "Clipboard not available on this platform"
+        #endif
     }
 }
