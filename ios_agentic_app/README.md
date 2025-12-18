@@ -56,6 +56,22 @@ A comprehensive knowledge management system:
 
 ## Features
 
+### Gesture-Driven UI
+
+- **Silent Interactions** - No confirmations, smooth animations
+- **Context-Adaptive** - UI adapts to schedule and preferences
+- **Natural Gestures** - Tap, swipe, drag for all actions
+- **Visual Space Adaptation** - Layout responds to user actions
+- **Quick Actions** - Swipe to schedule, drag to reschedule
+
+### Scheduling Intelligence
+
+- **Natural Language** - "Schedule meeting with John tomorrow at 2pm"
+- **Zero Cognitive Load** - System handles conflicts and optimization
+- **Auto-Scheduling** - Matches tasks to optimal time slots
+- **Conflict Resolution** - Detects and resolves automatically
+- **Gesture Scheduling** - Tap empty slot, type, done
+
 ### Reasoning Capabilities
 
 - **Intent Understanding** - Entity extraction and intent classification

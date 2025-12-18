@@ -13,45 +13,86 @@ public actor ReasoningEngine {
     private var currentContext: ReasoningContext?
     
     private let mlxLLM: MLXLLM?
+    private let clauseLangPolicy: ClauseLangPolicy?
     
     public init(
         planner: AgentPlanner,
         knowledgeBase: KnowledgeEscort,
         tools: ToolRegistry,
         memory: AgentMemory,
-        mlxLLM: MLXLLM? = nil
+        mlxLLM: MLXLLM? = nil,
+        clauseLangPolicy: ClauseLangPolicy? = nil
     ) {
         self.planner = planner
         self.knowledgeBase = knowledgeBase
         self.tools = tools
         self.memory = memory
         self.mlxLLM = mlxLLM
+        self.clauseLangPolicy = clauseLangPolicy
+    }
+    
+    private let workflowWarmer: WorkflowWarmer?
+    
+    public init(
+        planner: AgentPlanner,
+        knowledgeBase: KnowledgeEscort,
+        tools: ToolRegistry,
+        memory: AgentMemory,
+        mlxLLM: MLXLLM? = nil,
+        workflowWarmer: WorkflowWarmer? = nil
+    ) {
+        self.planner = planner
+        self.knowledgeBase = knowledgeBase
+        self.tools = tools
+        self.memory = memory
+        self.mlxLLM = mlxLLM
+        self.workflowWarmer = workflowWarmer
     }
     
     /// Main reasoning loop: understand → plan → execute → reflect → integrate knowledge
+    /// Uses warmed workflows when available for latency reduction
     public func reason(about userInput: String, maxIterations: Int = 5) async throws -> ReasoningResult {
         let trace = ReasoningTrace(id: UUID(), startedAt: Date())
         var iterations = 0
         var currentPlan: AgentPlan?
         var accumulatedResults: [AgentMessage] = []
         
+        // Check for warmed workflow (latency optimization)
+        var warmedWorkflow: WarmedWorkflow? = nil
+        if let warmer = workflowWarmer {
+            warmedWorkflow = await warmer.getWarmedWorkflow(for: userInput)
+        }
+        
         // Step 1: Understand intent with knowledge context
         let understanding = try await understandIntent(userInput, trace: trace)
         
-        // Step 2: Retrieve relevant knowledge
-        let relevantKnowledge = await knowledgeBase.retrieveRelevant(
-            query: userInput,
-            context: understanding.context,
-            limit: 5
-        )
+        // Step 2: Retrieve relevant knowledge (use warmed if available)
+        let relevantKnowledge: [KnowledgeItem]
+        if let warmed = warmedWorkflow {
+            // Use pre-computed knowledge (fast!)
+            relevantKnowledge = warmed.knowledge
+        } else {
+            // Normal retrieval
+            relevantKnowledge = await knowledgeBase.retrieveRelevant(
+                query: userInput,
+                context: understanding.context,
+                limit: 5
+            )
+        }
         
-        // Step 3: Plan with knowledge-informed context
+        // Step 3: Plan with knowledge-informed context (use warmed if available)
         let availableTools = await tools.list()
-        currentPlan = await planner.plan(
-            for: userInput,
-            availableTools: availableTools,
-            knowledgeContext: relevantKnowledge
-        )
+        if let warmed = warmedWorkflow {
+            // Use pre-computed plan structure (fast!)
+            currentPlan = await buildPlanFromWarmedWorkflow(warmed, userInput: userInput, tools: availableTools)
+        } else {
+            // Normal planning
+            currentPlan = await planner.plan(
+                for: userInput,
+                availableTools: availableTools,
+                knowledgeContext: relevantKnowledge
+            )
+        }
         
         // Step 4: Execute plan with reflection loop
         while iterations < maxIterations {
@@ -133,6 +174,32 @@ public actor ReasoningEngine {
             
             if let toolName = step.toolName, let tool = await tools.get(toolName) {
                 do {
+                    // Evaluate with ClauseLang policy first
+                    let policyEvaluation = await evaluateToolActionWithPolicy(
+                        toolName: toolName,
+                        arguments: step.arguments,
+                        context: currentContext ?? ReasoningContext(
+                            entities: [],
+                            intent: .general,
+                            temporalContext: .now,
+                            userPreferences: UserPreferences()
+                        )
+                    )
+                    
+                    if !policyEvaluation.isAllowed {
+                        let reason = policyEvaluation.isAllowed ? "" : {
+                            if case .denied(let r) = policyEvaluation { return r } else { return "Policy violation" }
+                        }()
+                        let errorMsg = AgentMessage(
+                            role: .system,
+                            content: "Tool '\(toolName)' denied by policy: \(reason)",
+                            timestamp: Date()
+                        )
+                        messages.append(errorMsg)
+                        errors.append(.toolExecution("Policy violation: \(reason)"))
+                        continue
+                    }
+                    
                     let policy = await getPolicyForTool(toolName)
                     let result = try await tool.call(args: step.arguments, policy: policy)
                     let toolMsg = AgentMessage(role: .tool, content: "[\(toolName)] \(result)", timestamp: Date())
@@ -155,22 +222,6 @@ public actor ReasoningEngine {
         }
         
         return ExecutionResult(messages: messages, errors: errors)
-    }
-    
-    private let mlxLLM: MLXLLM?
-    
-    public init(
-        planner: AgentPlanner,
-        knowledgeBase: KnowledgeEscort,
-        tools: ToolRegistry,
-        memory: AgentMemory,
-        mlxLLM: MLXLLM? = nil
-    ) {
-        self.planner = planner
-        self.knowledgeBase = knowledgeBase
-        self.tools = tools
-        self.memory = memory
-        self.mlxLLM = mlxLLM
     }
     
     /// Reflect on execution and determine if plan needs revision
@@ -264,6 +315,11 @@ public actor ReasoningEngine {
     }
     
     private func getPolicyForTool(_ toolName: String) async -> ToolPolicy {
+        // Use ClauseLang policy if available, otherwise fallback to default
+        if let clausePolicy = clauseLangPolicy {
+            return clausePolicy.basePolicy
+        }
+        
         // TODO: Load from settings or user preferences
         return ToolPolicy(
             allowNetwork: true,
@@ -272,6 +328,49 @@ public actor ReasoningEngine {
             allowedPaths: ["Documents", "Library"],
             maxResponseBytes: 256 * 1024
         )
+    }
+    
+    /// Evaluate tool action with ClauseLang policy
+    private func evaluateToolActionWithPolicy(
+        toolName: String,
+        arguments: [String: String],
+        context: ReasoningContext
+    ) async -> PolicyEvaluationResult {
+        // If no ClauseLang policy, allow by default (base policy already checked)
+        guard let clausePolicy = clauseLangPolicy else {
+            return .allowed
+        }
+        
+        // Create evaluation context
+        let evalContext = PolicyEvaluationContext(
+            toolName: toolName,
+            toolArguments: arguments,
+            userRole: .user, // TODO: Get from context
+            dataTypes: [], // TODO: Extract from arguments
+            jurisdiction: nil, // TODO: Get from policy
+            customVariables: extractCustomVariables(from: context)
+        )
+        
+        // Evaluate with ClauseLang policy
+        return clausePolicy.evaluateToolAction(
+            toolName: toolName,
+            arguments: arguments,
+            context: evalContext
+        )
+    }
+    
+    private func extractCustomVariables(from context: ReasoningContext) -> [String: ConditionValue] {
+        var variables: [String: ConditionValue] = [:]
+        
+        // Extract entities as variables
+        for entity in context.entities {
+            variables[entity.type] = .string(entity.value)
+        }
+        
+        // Extract intent
+        variables["intent"] = .string(String(describing: context.intent))
+        
+        return variables
     }
     
     private func attemptRecovery(error: Error, step: AgentPlanStep) async -> AgentMessage? {
@@ -301,6 +400,22 @@ public actor ReasoningEngine {
     private func extractInsights(from result: ExecutionResult) -> [String] {
         // Extract insights from execution results
         return []
+    }
+    
+    private func buildPlanFromWarmedWorkflow(
+        _ warmed: WarmedWorkflow,
+        userInput: String,
+        tools: [AgentTool]
+    ) async -> AgentPlan {
+        // Convert warmed workflow plan structure to AgentPlan
+        let steps = warmed.planStructure.steps.map { step in
+            AgentPlanStep(
+                description: step.description,
+                toolName: step.toolName,
+                arguments: [:] // Will be filled during execution
+            )
+        }
+        return AgentPlan(steps: steps)
     }
 }
 
