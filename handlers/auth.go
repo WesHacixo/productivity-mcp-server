@@ -3,6 +3,7 @@ package handlers
 import (
 	"crypto/rand"
 	"encoding/base64"
+	"fmt"
 	"net/http"
 	"os"
 	"time"
@@ -67,7 +68,14 @@ func OAuthAuthorize(c *gin.Context) {
 	// 1. Show a consent screen
 	// 2. Require user authentication
 	// 3. Generate a secure, short-lived authorization code
-	authCode := generateAuthCode(clientID, redirectURI)
+	authCode, err := generateAuthCode(clientID, redirectURI)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":             "server_error",
+			"error_description": "Failed to generate authorization code",
+		})
+		return
+	}
 
 	// Redirect back with authorization code
 	redirectURL := redirectURI + "?code=" + authCode + "&state=" + state
@@ -111,7 +119,14 @@ func OAuthToken(c *gin.Context) {
 			return
 		}
 
-		refreshToken := generateRefreshToken()
+		refreshToken, err := generateRefreshToken()
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error":             "server_error",
+				"error_description": "Failed to generate refresh token",
+			})
+			return
+		}
 
 		c.JSON(http.StatusOK, OAuthTokenResponse{
 			AccessToken:  accessToken,
@@ -198,12 +213,14 @@ func OAuthIntrospect(c *gin.Context) {
 
 // Helper functions
 
-func generateAuthCode(clientID, redirectURI string) string {
+func generateAuthCode(clientID, redirectURI string) (string, error) {
 	// Generate secure, random authorization code
 	// TODO: Store in database/cache with expiration (10 minutes)
 	bytes := make([]byte, 32)
-	rand.Read(bytes)
-	return base64.URLEncoding.EncodeToString(bytes)
+	if _, err := rand.Read(bytes); err != nil {
+		return "", fmt.Errorf("failed to generate authorization code: %w", err)
+	}
+	return base64.URLEncoding.EncodeToString(bytes), nil
 }
 
 func generateAccessToken(authCode string) (string, error) {
@@ -223,12 +240,14 @@ func generateAccessToken(authCode string) (string, error) {
 	return token.SignedString(jwtSecret)
 }
 
-func generateRefreshToken() string {
+func generateRefreshToken() (string, error) {
 	// Generate secure, random refresh token
 	// TODO: Store in database with expiration (30 days)
 	bytes := make([]byte, 32)
-	rand.Read(bytes)
-	return base64.URLEncoding.EncodeToString(bytes)
+	if _, err := rand.Read(bytes); err != nil {
+		return "", fmt.Errorf("failed to generate refresh token: %w", err)
+	}
+	return base64.URLEncoding.EncodeToString(bytes), nil
 }
 
 func refreshAccessToken(refreshToken string) (string, error) {

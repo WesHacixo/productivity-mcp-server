@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"strings"
 )
 
 // SupabaseClient wraps HTTP client for Supabase REST API
@@ -19,12 +20,14 @@ type SupabaseClient struct {
 
 // NewSupabaseClient creates a new Supabase client
 func NewSupabaseClient(supabaseURL, supabaseKey string) (*SupabaseClient, error) {
-	// Ensure URL ends with /rest/v1
-	baseURL := supabaseURL
-	if baseURL[len(baseURL)-1] != '/' {
-		baseURL += "/"
+	if supabaseURL == "" {
+		return nil, fmt.Errorf("supabase URL is required")
 	}
-	baseURL += "rest/v1/"
+	if supabaseKey == "" {
+		return nil, fmt.Errorf("supabase key is required")
+	}
+
+	baseURL := strings.TrimRight(supabaseURL, "/") + "/rest/v1/"
 
 	log.Printf("Supabase client initialized for: %s", baseURL)
 

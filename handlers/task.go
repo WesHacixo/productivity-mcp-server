@@ -56,15 +56,15 @@ func (h *TaskHandler) CreateTask(c *gin.Context) {
 
 	// Convert request to map for Supabase
 	taskData := map[string]interface{}{
-		"title":               req.Title,
-		"description":         req.Description,
-		"priority":            req.Priority,
-		"due_date":            req.DueDate.Format(time.RFC3339),
+		"title":              req.Title,
+		"description":        req.Description,
+		"priority":           req.Priority,
+		"due_date":           req.DueDate.Format(time.RFC3339),
 		"estimated_duration": req.EstimatedDuration,
-		"category":            req.Category,
-		"completed":           false,
-		"created_at":          time.Now().Format(time.RFC3339),
-		"updated_at":          time.Now().Format(time.RFC3339),
+		"category":           req.Category,
+		"completed":          false,
+		"created_at":         time.Now().Format(time.RFC3339),
+		"updated_at":         time.Now().Format(time.RFC3339),
 	}
 
 	if req.RecurringFrequency != "" {
@@ -170,11 +170,7 @@ func (h *TaskHandler) UpdateTask(c *gin.Context) {
 		updateData["recurring_interval"] = *req.RecurringInterval
 	}
 	if req.RecurringEndDate != nil {
-		if req.RecurringEndDate != nil {
-			updateData["recurring_end_date"] = req.RecurringEndDate.Format(time.RFC3339)
-		} else {
-			updateData["recurring_end_date"] = nil
-		}
+		updateData["recurring_end_date"] = req.RecurringEndDate.Format(time.RFC3339)
 	}
 
 	if err := h.supabaseClient.UpdateTask(taskID, updateData); err != nil {
