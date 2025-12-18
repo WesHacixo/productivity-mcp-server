@@ -15,6 +15,7 @@ public actor ReasoningEngine {
     private let mlxLLM: MLXLLM?
     private let workflowWarmer: WorkflowWarmer?
     private let clauseLangPolicy: ClauseLangPolicy?
+    private let koExecutor: KOExecutor?
     
     public init(
         planner: AgentPlanner,
@@ -23,7 +24,8 @@ public actor ReasoningEngine {
         memory: AgentMemory,
         mlxLLM: MLXLLM? = nil,
         workflowWarmer: WorkflowWarmer? = nil,
-        clauseLangPolicy: ClauseLangPolicy? = nil
+        clauseLangPolicy: ClauseLangPolicy? = nil,
+        koExecutor: KOExecutor? = nil
     ) {
         self.planner = planner
         self.knowledgeBase = knowledgeBase
@@ -32,6 +34,7 @@ public actor ReasoningEngine {
         self.mlxLLM = mlxLLM
         self.workflowWarmer = workflowWarmer
         self.clauseLangPolicy = clauseLangPolicy
+        self.koExecutor = koExecutor
     }
     
     /// Main reasoning loop: understand → plan → execute → reflect → integrate knowledge
@@ -385,6 +388,63 @@ public actor ReasoningEngine {
     private func extractInsights(from result: ExecutionResult) -> [String] {
         // Extract insights from execution results
         return []
+    }
+    
+    /// Execute a Kernel Object as workflow orchestrator
+    public func executeKO(
+        _ ko: KernelObject,
+        context: ReasoningContext
+    ) async throws -> KOExecutionResult {
+        guard let executor = koExecutor else {
+            throw AgentError.modelFailure("KOExecutor not available")
+        }
+        
+        // Convert ReasoningContext to ClauseContext
+        let clauseContext = buildClauseContext(from: context)
+        
+        // Execute KO
+        return try await executor.execute(ko, context: clauseContext)
+    }
+    
+    /// Handle reflex event during KO execution
+    public func handleReflexEvent(
+        _ event: ReflexEvent,
+        currentKO: KernelObject,
+        context: ReasoningContext
+    ) async throws -> KernelObject? {
+        guard let executor = koExecutor else {
+            return nil
+        }
+        
+        let clauseContext = buildClauseContext(from: context)
+        return try await executor.handleReflexEvent(event, currentKO: currentKO, context: clauseContext)
+    }
+    
+    /// Build ClauseContext from ReasoningContext
+    private func buildClauseContext(from context: ReasoningContext) -> ClauseContext {
+        let clauseContext = ClauseContext()
+        
+        // Add entities as variables
+        for entity in context.entities {
+            clauseContext.variables[entity.type] = .string(entity.value)
+        }
+        
+        // Add intent
+        clauseContext.variables["intent"] = .string(String(describing: context.intent))
+        
+        // Add temporal context
+        switch context.temporalContext {
+        case .now:
+            clauseContext.variables["timestamp"] = .number(Date().timeIntervalSince1970)
+        case .past(let interval):
+            clauseContext.variables["timestamp"] = .number(Date().addingTimeInterval(-interval).timeIntervalSince1970)
+        case .future(let interval):
+            clauseContext.variables["timestamp"] = .number(Date().addingTimeInterval(interval).timeIntervalSince1970)
+        case .specific(let date):
+            clauseContext.variables["timestamp"] = .number(date.timeIntervalSince1970)
+        }
+        
+        return clauseContext
     }
     
     private func buildPlanFromWarmedWorkflow(

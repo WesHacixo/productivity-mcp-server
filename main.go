@@ -146,10 +146,17 @@ func main() {
 		mcp.POST("/analyze-productivity", claudeHandler.AnalyzeProductivity)
 	}
 
-	// OAuth 2.0 discovery endpoint (RFC 8414)
+	// OAuth 2.1 discovery endpoint (RFC 8414)
 	router.GET("/.well-known/oauth-authorization-server", handlers.OAuthDiscovery)
 
-	// OAuth 2.0 endpoints for MCP authentication
+	// OAuth 2.1 endpoints for MCP authentication
+	// Support both /authorize and /oauth/authorize (common OAuth patterns)
+	// #region agent log
+	logger.Info("Registering OAuth routes", map[string]interface{}{
+		"routes": []string{"/.well-known/oauth-authorization-server", "/authorize", "/oauth/authorize", "/oauth/token"},
+	})
+	// #endregion
+	router.GET("/authorize", handlers.OAuthAuthorize)
 	router.GET("/oauth/authorize", handlers.OAuthAuthorize)
 	router.POST("/oauth/token", handlers.OAuthToken)
 	router.POST("/oauth/introspect", handlers.OAuthIntrospect)

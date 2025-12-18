@@ -96,10 +96,10 @@ func (h *OllamaHandler) Generate(prompt string, systemPrompt string) (string, er
 
 // ReviewCodebaseRequest represents a codebase review request
 type ReviewCodebaseRequest struct {
-	BasePath    string   `json:"base_path"`
+	BasePath     string   `json:"base_path"`
 	FilePatterns []string `json:"file_patterns,omitempty"` // e.g., ["*.go", "*.ts", "*.tsx"]
-	ExcludeDirs []string `json:"exclude_dirs,omitempty"`    // e.g., ["node_modules", ".git"]
-	FocusAreas  []string `json:"focus_areas,omitempty"`     // e.g., ["security", "performance", "architecture"]
+	ExcludeDirs  []string `json:"exclude_dirs,omitempty"`  // e.g., ["node_modules", ".git"]
+	FocusAreas   []string `json:"focus_areas,omitempty"`   // e.g., ["security", "performance", "architecture"]
 }
 
 // ReviewCodebase analyzes the codebase using Ollama

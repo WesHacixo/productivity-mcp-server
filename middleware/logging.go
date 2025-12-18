@@ -32,15 +32,15 @@ func RequestLogger(logger *utils.Logger) gin.HandlerFunc {
 		// Log request
 		logger.Info("HTTP request",
 			map[string]interface{}{
-				"method":      c.Request.Method,
-				"path":        path,
-				"query":       query,
-				"status":      c.Writer.Status(),
-				"latency_ms":  latency.Milliseconds(),
-				"client_ip":   c.ClientIP(),
-				"user_agent":  c.Request.UserAgent(),
-				"request_id":  requestID,
-				"user_id":     c.GetString("user_id"),
+				"method":     c.Request.Method,
+				"path":       path,
+				"query":      query,
+				"status":     c.Writer.Status(),
+				"latency_ms": latency.Milliseconds(),
+				"client_ip":  c.ClientIP(),
+				"user_agent": c.Request.UserAgent(),
+				"request_id": requestID,
+				"user_id":    c.GetString("user_id"),
 			},
 		)
 

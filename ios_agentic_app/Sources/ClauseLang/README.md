@@ -5,6 +5,7 @@ ClauseLang integration for the iOS agentic app, providing structured contract pr
 ## Overview
 
 ClauseLang enables:
+
 - **Structured Policy Representation**: Convert natural language policies into structured primitives
 - **Privacy Policy Ingestion**: Parse privacy policies into ClauseLang clauses
 - **Policy Enforcement**: Enforce policies at the tool and reasoning level
@@ -13,7 +14,7 @@ ClauseLang enables:
 
 ## Architecture
 
-```
+```swift
 ClauseLang/
 ├── ClauseLangTypes.swift          # Core types (Clause, Condition, Action, ContractPrimitive)
 ├── ClauseLangParser.swift         # Parser for ClauseLang syntax

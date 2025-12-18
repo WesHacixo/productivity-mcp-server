@@ -63,15 +63,15 @@ func (e *AppError) WithFields(fields map[string]interface{}) *AppError {
 
 // Common error codes
 var (
-	ErrCodeValidation     = "VALIDATION_ERROR"
-	ErrCodeNotFound       = "NOT_FOUND"
-	ErrCodeUnauthorized   = "UNAUTHORIZED"
-	ErrCodeForbidden      = "FORBIDDEN"
-	ErrCodeInternal       = "INTERNAL_ERROR"
-	ErrCodeExternal       = "EXTERNAL_SERVICE_ERROR"
-	ErrCodeRateLimit      = "RATE_LIMIT_EXCEEDED"
-	ErrCodeTimeout        = "TIMEOUT"
-	ErrCodeBadRequest     = "BAD_REQUEST"
+	ErrCodeValidation   = "VALIDATION_ERROR"
+	ErrCodeNotFound     = "NOT_FOUND"
+	ErrCodeUnauthorized = "UNAUTHORIZED"
+	ErrCodeForbidden    = "FORBIDDEN"
+	ErrCodeInternal     = "INTERNAL_ERROR"
+	ErrCodeExternal     = "EXTERNAL_SERVICE_ERROR"
+	ErrCodeRateLimit    = "RATE_LIMIT_EXCEEDED"
+	ErrCodeTimeout      = "TIMEOUT"
+	ErrCodeBadRequest   = "BAD_REQUEST"
 )
 
 // Common error constructors

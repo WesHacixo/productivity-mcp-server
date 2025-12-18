@@ -8,7 +8,7 @@ import (
 
 // RetryConfig configures retry behavior
 type RetryConfig struct {
-	MaxAttempts int
+	MaxAttempts  int
 	InitialDelay time.Duration
 	MaxDelay     time.Duration
 	Multiplier   float64
@@ -18,7 +18,7 @@ type RetryConfig struct {
 // DefaultRetryConfig returns a default retry configuration
 func DefaultRetryConfig() *RetryConfig {
 	return &RetryConfig{
-		MaxAttempts: 3,
+		MaxAttempts:  3,
 		InitialDelay: 100 * time.Millisecond,
 		MaxDelay:     5 * time.Second,
 		Multiplier:   2.0,

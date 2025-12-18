@@ -3,6 +3,7 @@
 ## What's Ready to Deploy
 
 ### Production Improvements ✅
+
 - [x] Structured logging (`utils/logger.go`)
 - [x] Error handling utilities (`utils/errors.go`)
 - [x] Retry logic (`utils/retry.go`)
@@ -13,18 +14,21 @@
 - [x] Request ID tracking
 
 ### Security Fixes ✅
+
 - [x] JWT secret handling (production mode check)
 - [x] OAuth state validation (CSRF protection)
 - [x] Redirect URI validation
 - [x] Input validation for all endpoints
 
 ### OAuth Improvements ✅
+
 - [x] Default OAuth clients (`claude-desktop`, `mcp_client`)
 - [x] Client registration endpoint (`/oauth/register`)
 - [x] Client validation
 - [x] Redirect URI validation
 
 ### Railway Configuration ✅
+
 - [x] Health check path configured in `railway.json`
 - [x] Restart policy configured
 - [x] Build command optimized
@@ -32,6 +36,7 @@
 ## Files Changed
 
 ### New Files
+
 - `utils/logger.go` - Structured logging
 - `utils/errors.go` - Error handling
 - `utils/retry.go` - Retry logic
@@ -93,21 +98,25 @@ curl -X POST https://productivity-mcp-server-production.up.railway.app/oauth/reg
 
 Use the credentials from `docs/CLAUDE_SETUP_NOW.md`
 
+
 ## Environment Variables Needed in Railway
 
 Make sure these are set in Railway Dashboard:
 
 **Required:**
+
 - `SUPABASE_URL`
 - `SUPABASE_ANON_KEY`
 
 **Optional:**
+
 - `CLAUDE_API_KEY` (for AI features)
 - `JWT_SECRET` (for production - generate with `openssl rand -base64 32`)
 - `LOG_LEVEL` (default: INFO)
 - `GIN_MODE` (default: release)
 
 **Auto-set by Railway:**
+
 - `PORT` (automatically set)
 
 ## What Will Happen After Deploy
@@ -125,6 +134,7 @@ Make sure these are set in Railway Dashboard:
 
 After deployment:
 
+
 - [ ] Health endpoint responds
 - [ ] Ready endpoint responds
 - [ ] OAuth authorize endpoint works
@@ -140,6 +150,7 @@ After deployment:
 
 If something goes wrong:
 
+
 1. Railway Dashboard → Deployments
 2. Find previous working deployment
 3. Click "Redeploy"
@@ -148,6 +159,7 @@ If something goes wrong:
 ## Ready to Deploy! ✅
 
 All code is ready. Just run:
+
 ```bash
 git add . && git commit -m "Production improvements" && git push
 ```

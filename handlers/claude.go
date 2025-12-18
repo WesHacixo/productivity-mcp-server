@@ -38,9 +38,9 @@ func (h *ClaudeHandler) callClaudeAPI(messages []map[string]interface{}) (string
 	}
 
 	payload := map[string]interface{}{
-		"model":       "claude-3-5-sonnet-20241022",
-		"max_tokens":  1024,
-		"messages":    messages,
+		"model":      "claude-3-5-sonnet-20241022",
+		"max_tokens": 1024,
+		"messages":   messages,
 	}
 
 	jsonData, err := json.Marshal(payload)
@@ -107,7 +107,7 @@ Return ONLY valid JSON, no other text.`, req.Input)
 
 	messages := []map[string]interface{}{
 		{
-			"role": "user",
+			"role":    "user",
 			"content": prompt,
 		},
 	}
@@ -201,7 +201,7 @@ Return ONLY valid JSON, no other text.`, req.FileName, req.FileType, req.FileCon
 
 	messages := []map[string]interface{}{
 		{
-			"role": "user",
+			"role":    "user",
 			"content": prompt,
 		},
 	}
@@ -293,7 +293,7 @@ Return ONLY a JSON array of strings, no other text. Example: ["Subtask 1", "Subt
 
 	messages := []map[string]interface{}{
 		{
-			"role": "user",
+			"role":    "user",
 			"content": prompt,
 		},
 	}
@@ -393,7 +393,7 @@ Return ONLY valid JSON, no other text.`, req.Days, string(tasksJSON))
 
 	messages := []map[string]interface{}{
 		{
-			"role": "user",
+			"role":    "user",
 			"content": prompt,
 		},
 	}
@@ -442,10 +442,10 @@ Return ONLY valid JSON, no other text.`, req.Days, string(tasksJSON))
 	}
 
 	response := models.AnalyzeProductivityResponse{
-		CompletedTasks: completedCount,
-		TotalTasks:     totalCount,
-		CompletionRate: completionRate,
-		Insights:       insights,
+		CompletedTasks:  completedCount,
+		TotalTasks:      totalCount,
+		CompletionRate:  completionRate,
+		Insights:        insights,
 		Recommendations: recommendations,
 	}
 

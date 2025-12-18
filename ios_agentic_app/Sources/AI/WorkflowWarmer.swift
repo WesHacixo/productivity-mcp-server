@@ -10,15 +10,24 @@ public actor WorkflowWarmer {
     private let knowledgeEscort: KnowledgeEscort
     private let planner: AgentPlanner
     private let tools: ToolRegistry
+    private let clauseLang: ClauseLang?
+    private let dagBuilder: DAGBuilder?
+    private let koStorage: ClauseLangStorage?
     
     public init(
         knowledgeEscort: KnowledgeEscort,
         planner: AgentPlanner,
-        tools: ToolRegistry
+        tools: ToolRegistry,
+        clauseLang: ClauseLang? = nil,
+        dagBuilder: DAGBuilder? = nil,
+        koStorage: ClauseLangStorage? = nil
     ) {
         self.knowledgeEscort = knowledgeEscort
         self.planner = planner
         self.tools = tools
+        self.clauseLang = clauseLang
+        self.dagBuilder = dagBuilder
+        self.koStorage = koStorage
     }
     
     /// Warm workflows for predicted actions
@@ -107,15 +116,225 @@ public actor WorkflowWarmer {
         // Pre-compute the plan structure (deterministic planning logic)
         // This is the "clauselang logic" - deterministic execution flow
         
-        let availableTools = await tools.list()
+        // Try to load KO from storage first (ClauseLang-based workflow)
+        if let storage = koStorage, let lang = clauseLang, let builder = dagBuilder {
+            if let ko = try? await loadWorkflowKO(for: prediction, storage: storage, lang: lang, builder: builder) {
+                // Convert KO to PlanStructure
+                return planStructureFromKO(ko)
+            }
+        }
         
-        // Build deterministic plan structure based on prediction type
+        // Fallback to hardcoded patterns (backward compatibility)
+        let availableTools = await tools.list()
         let steps = buildDeterministicSteps(for: prediction, tools: availableTools)
         
         return PlanStructure(
             steps: steps,
             estimatedDuration: estimateDuration(steps),
             dependencies: extractDependencies(steps)
+        )
+    }
+    
+    /// Load workflow KO from storage or create from Flowstate Clause Library
+    private func loadWorkflowKO(
+        for prediction: Prediction,
+        storage: ClauseLangStorage,
+        lang: ClauseLang,
+        builder: DAGBuilder
+    ) async throws -> KernelObject? {
+        // Try to load from storage first
+        let koId = workflowKOId(for: prediction)
+        if let stored = try? await storage.loadKO(id: koId) {
+            return stored
+        }
+        
+        // Create from Flowstate Clause Library based on prediction type
+        switch prediction.type {
+        case .scheduling:
+            return try await FlowstateClauseLibrary.buildSchedulingWorkflowKO(
+                clauseLang: lang,
+                dagBuilder: builder,
+                focusModeEnabled: true,
+                recoveryBlocksEnabled: true,
+                meetingShieldsEnabled: true,
+                errandsBatchingEnabled: true,
+                flowCostEnabled: true
+            )
+        case .task:
+            // Create task workflow KO
+            return try await buildTaskWorkflowKO(lang: lang, builder: builder)
+        case .optimization:
+            // Create optimization workflow KO
+            return try await buildOptimizationWorkflowKO(lang: lang, builder: builder)
+        case .reminder:
+            // Create reminder workflow KO
+            return try await buildReminderWorkflowKO(lang: lang, builder: builder)
+        }
+    }
+    
+    /// Convert KO to PlanStructure
+    private func planStructureFromKO(_ ko: KernelObject) -> PlanStructure {
+        let steps = ko.dagNodes.map { node in
+            DeterministicStep(
+                type: stepTypeFromNode(node),
+                description: node.clause.description ?? node.clause.raw,
+                toolName: extractToolName(from: node),
+                deterministic: isDeterministic(node: node)
+            )
+        }
+        
+        return PlanStructure(
+            steps: steps,
+            estimatedDuration: estimateDurationFromKO(ko),
+            dependencies: extractDependenciesFromKO(ko)
+        )
+    }
+    
+    private func stepTypeFromNode(_ node: DAGNode) -> DeterministicStep.StepType {
+        // Infer step type from clause action
+        let action = node.clause.ast.action.function.lowercased()
+        
+        if action.contains("retrieve") || action.contains("knowledge") {
+            return .knowledgeRetrieval
+        }
+        if action.contains("plan") || action.contains("schedule") {
+            return .planning
+        }
+        return .toolExecution
+    }
+    
+    private func extractToolName(from node: DAGNode) -> String? {
+        // Extract tool name from clause action
+        let action = node.clause.ast.action.function.lowercased()
+        
+        if action.contains("calendar") {
+            return "calendar"
+        }
+        if action.contains("task") {
+            return "tasks"
+        }
+        return nil
+    }
+    
+    private func isDeterministic(node: DAGNode) -> Bool {
+        // Knowledge retrieval and planning are deterministic
+        let action = node.clause.ast.action.function.lowercased()
+        return action.contains("retrieve") || action.contains("knowledge") || action.contains("plan")
+    }
+    
+    private func estimateDurationFromKO(_ ko: KernelObject) -> TimeInterval {
+        // Estimate based on number of nodes and types
+        var duration: TimeInterval = 0
+        
+        for node in ko.dagNodes {
+            let action = node.clause.ast.action.function.lowercased()
+            if action.contains("retrieve") || action.contains("knowledge") {
+                duration += 0.1 // Fast, cached
+            } else if action.contains("plan") {
+                duration += 0.2 // Deterministic planning
+            } else {
+                duration += 1.0 // Network call (not pre-computed)
+            }
+        }
+        
+        return duration
+    }
+    
+    private func extractDependenciesFromKO(_ ko: KernelObject) -> [String] {
+        var dependencies: [String] = []
+        
+        for node in ko.dagNodes {
+            if !node.dependencies.isEmpty {
+                dependencies.append("\(node.id) depends on: \(node.dependencies.joined(separator: ", "))")
+            }
+        }
+        
+        return dependencies
+    }
+    
+    private func workflowKOId(for prediction: Prediction) -> String {
+        let typeStr = String(describing: prediction.type)
+        return "workflow_\(typeStr)_\(abs(prediction.suggestedAction.hashValue))"
+    }
+    
+    // MARK: - Workflow KO Builders
+    
+    private func buildTaskWorkflowKO(lang: ClauseLang, builder: DAGBuilder) async throws -> KernelObject {
+        let clauses = [
+            FlowstateClauseLibrary.errandsBatching,
+            FlowstateClauseLibrary.flowCostMinBlockSize
+        ]
+        
+        let clauseInputs = clauses.map {
+            FlowstateClauseLibrary.createClauseInput(rawClause: $0, description: "Task workflow clause")
+        }
+        
+        let dagNodes = try await builder.buildDAG(
+            from: clauseInputs,
+            yields: ["tasks.normalized[]"],
+            inputs: ["task_inputs[]"]
+        )
+        
+        return await builder.collapseToKO(
+            dagNodes: dagNodes,
+            clauseId: "task_workflow_v1",
+            type: .taskExecution,
+            role: .agent,
+            inputs: ["task_inputs[]"],
+            yields: ["tasks.normalized[]"]
+        )
+    }
+    
+    private func buildOptimizationWorkflowKO(lang: ClauseLang, builder: DAGBuilder) async throws -> KernelObject {
+        let clauses = [
+            FlowstateClauseLibrary.flowCostReduceSwitches,
+            FlowstateClauseLibrary.flowCostClusterByMode,
+            FlowstateClauseLibrary.entropyCap
+        ]
+        
+        let clauseInputs = clauses.map {
+            FlowstateClauseLibrary.createClauseInput(rawClause: $0, description: "Optimization workflow clause")
+        }
+        
+        let dagNodes = try await builder.buildDAG(
+            from: clauseInputs,
+            yields: ["optimized_schedule"],
+            inputs: ["current_schedule", "constraints"]
+        )
+        
+        return await builder.collapseToKO(
+            dagNodes: dagNodes,
+            clauseId: "optimization_workflow_v1",
+            type: .scheduling,
+            role: .agent,
+            inputs: ["current_schedule", "constraints"],
+            yields: ["optimized_schedule"]
+        )
+    }
+    
+    private func buildReminderWorkflowKO(lang: ClauseLang, builder: DAGBuilder) async throws -> KernelObject {
+        let clauses = [
+            FlowstateClauseLibrary.suggestBreak,
+            FlowstateClauseLibrary.recoveryBlockAfterFocus
+        ]
+        
+        let clauseInputs = clauses.map {
+            FlowstateClauseLibrary.createClauseInput(rawClause: $0, description: "Reminder workflow clause")
+        }
+        
+        let dagNodes = try await builder.buildDAG(
+            from: clauseInputs,
+            yields: ["reminders[]"],
+            inputs: ["schedule", "time"]
+        )
+        
+        return await builder.collapseToKO(
+            dagNodes: dagNodes,
+            clauseId: "reminder_workflow_v1",
+            type: .workflow,
+            role: .agent,
+            inputs: ["schedule", "time"],
+            yields: ["reminders[]"]
         )
     }
     

@@ -227,6 +227,52 @@ public actor ClauseLangStorage {
         
         return try decoder.decode(ContractPrimitive.self, from: data)
     }
+    
+    // MARK: - Kernel Object Storage
+    
+    /// Save a Kernel Object to JSON
+    public func saveKO(_ ko: KernelObject, filename: String? = nil) throws {
+        let name = filename ?? "ko-\(ko.id).json"
+        let url = baseURL.appendingPathComponent("kernel_objects").appendingPathComponent(name)
+        
+        // Create directory if needed
+        try fileManager.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        encoder.dateEncodingStrategy = .iso8601
+        
+        let data = try encoder.encode(ko)
+        try data.write(to: url, options: [.atomic])
+    }
+    
+    /// Load a Kernel Object from JSON
+    public func loadKO(id: String) throws -> KernelObject? {
+        let url = baseURL.appendingPathComponent("kernel_objects").appendingPathComponent("ko-\(id).json")
+        
+        guard fileManager.fileExists(atPath: url.path) else {
+            return nil
+        }
+        
+        let data = try Data(contentsOf: url)
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        
+        return try decoder.decode(KernelObject.self, from: data)
+    }
+    
+    /// List all Kernel Objects
+    public func listKOs() throws -> [String] {
+        let koDir = baseURL.appendingPathComponent("kernel_objects")
+        guard fileManager.fileExists(atPath: koDir.path) else {
+            return []
+        }
+        
+        let files = try fileManager.contentsOfDirectory(at: koDir, includingPropertiesForKeys: nil)
+        return files
+            .filter { $0.pathExtension == "json" }
+            .map { $0.lastPathComponent.replacingOccurrences(of: "ko-", with: "").replacingOccurrences(of: ".json", with: "") }
+    }
 }
 
 // MARK: - Errors

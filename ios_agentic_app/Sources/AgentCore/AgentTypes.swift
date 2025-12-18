@@ -2,7 +2,7 @@
 import Foundation
 
 public struct AgentMessage: Identifiable, Codable {
-    public let id: UUID
+    public var id: UUID
     public let role: Role
     public let content: String
     public let timestamp: Date
@@ -19,6 +19,21 @@ public struct AgentMessage: Identifiable, Codable {
         self.role = role
         self.content = content
         self.timestamp = timestamp
+    }
+    
+    enum CodingKeys: String, CodingKey {
+        case id
+        case role
+        case content
+        case timestamp
+    }
+    
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        role = try container.decode(Role.self, forKey: .role)
+        content = try container.decode(String.self, forKey: .content)
+        timestamp = try container.decode(Date.self, forKey: .timestamp)
     }
 }
 

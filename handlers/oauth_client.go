@@ -22,6 +22,8 @@ var defaultClients = map[string]*OAuthClient{
 		RedirectURIs: []string{
 			"http://localhost",
 			"https://claude.ai",
+			"https://claude.ai/api/mcp/auth_callback",
+			"https://claude.com/api/mcp/auth_callback",
 			"claude://oauth-callback",
 		},
 		Name: "Claude Desktop",
@@ -106,15 +108,17 @@ func validateRedirectURI(clientID, redirectURI string) bool {
 			}
 		}
 	}
-	// For development, allow common redirect URIs
+	// For development, allow common redirect URIs (including Claude's official URIs)
 	commonURIs := []string{
 		"http://localhost",
 		"https://claude.ai",
+		"https://claude.ai/api/mcp/auth_callback",
+		"https://claude.com/api/mcp/auth_callback",
 		"claude://oauth-callback",
 		"https://example.com",
 	}
 	for _, uri := range commonURIs {
-		if redirectURI == uri || redirectURI == uri+"/callback" {
+		if redirectURI == uri {
 			return true
 		}
 	}
