@@ -12,7 +12,6 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
-  InitializeRequestSchema,
   ErrorCode,
   McpError,
 } from "@modelcontextprotocol/sdk/types.js";
@@ -74,22 +73,8 @@ async function apiRequest(endpoint, options = {}) {
   }
 }
 
-// Handle initialize request
-server.setRequestHandler(InitializeRequestSchema, async (request) => {
-  console.error("[Productivity MCP] Initialize request received");
-  return {
-    protocolVersion: request.params.protocolVersion,
-    capabilities: {
-      tools: {},
-    },
-    serverInfo: {
-      name: "productivity-mcp-server",
-      version: "1.0.0",
-    },
-  };
-});
-
 // List available tools
+// Note: Initialize is handled automatically by the Server class
 server.setRequestHandler(ListToolsRequestSchema, async () => {
   console.error("[Productivity MCP] ListTools request received");
   return {
