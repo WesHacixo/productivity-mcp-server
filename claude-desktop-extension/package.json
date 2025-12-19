@@ -1,0 +1,21 @@
+{
+  "name": "productivity-mcp-server",
+  "version": "1.0.0",
+  "description": "Productivity MCP Server - Tasks and Goals Management for Claude Desktop",
+  "main": "index.js",
+  "type": "module",
+  "bin": {
+    "productivity-mcp": "./index.js"
+  },
+  "scripts": {
+    "build": "mcpb pack",
+    "test": "node index.js"
+  },
+  "keywords": ["mcp", "claude", "productivity", "tasks", "goals"],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@anthropic-ai/mcpb": "^2.1.2",
+    "@modelcontextprotocol/sdk": "^1.25.1"
+  }
+}

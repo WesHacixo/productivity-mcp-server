@@ -1,0 +1,29 @@
+{
+  "manifest_version": "0.2",
+  "name": "productivity-mcp-server",
+  "display_name": "Productivity MCP Server",
+  "version": "1.0.0",
+  "description": "Productivity MCP Server - Tasks and Goals Management",
+  "author": {
+    "name": "Productivity Team"
+  },
+  "server": {
+    "type": "node",
+    "entry_point": "index.js"
+  },
+  "user_config": {
+    "api_url": {
+      "type": "string",
+      "description": "API Server URL (e.g., https://productivity-mcp-server-production.up.railway.app)",
+      "default": "https://productivity-mcp-server-production.up.railway.app",
+      "required": true
+    },
+    "api_key": {
+      "type": "string",
+      "description": "API Key for authentication (optional, can use OAuth token)",
+      "default": "",
+      "required": false,
+      "secret": true
+    }
+  }
+}

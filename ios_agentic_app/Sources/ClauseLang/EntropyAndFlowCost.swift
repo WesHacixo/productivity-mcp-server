@@ -76,8 +76,11 @@ public actor EntropyTracker {
 public actor FlowCostOptimizer {
     private var contextSwitchCount: Int = 0
     private var taskFragmentation: [String: Int] = [:] // task_id -> fragment_count
+    private let mlxLLM: MLXLLM?
     
-    public init() {}
+    public init(mlxLLM: MLXLLM? = nil) {
+        self.mlxLLM = mlxLLM
+    }
     
     /// Calculate flow cost for a schedule
     public func calculateFlowCost(
@@ -125,7 +128,13 @@ public actor FlowCostOptimizer {
     public func clusterByCognitiveMode(
         tasks: [TaskItem],
         cognitiveModes: [String: String]
-    ) -> [[TaskItem]] {
+    ) async -> [[TaskItem]] {
+        // Use MLX for intelligent clustering if available
+        if let mlx = mlxLLM {
+            return try await mlxClustering(tasks: tasks, cognitiveModes: cognitiveModes, mlx: mlx)
+        }
+        
+        // Fallback to simple clustering
         var clusters: [String: [TaskItem]] = [:]
         
         for task in tasks {
@@ -137,6 +146,72 @@ public actor FlowCostOptimizer {
         }
         
         return Array(clusters.values)
+    }
+    
+    /// MLX-powered intelligent clustering
+    private func mlxClustering(
+        tasks: [TaskItem],
+        cognitiveModes: [String: String],
+        mlx: MLXLLM
+    ) async throws -> [[TaskItem]] {
+        let prompt = """
+        Cluster these tasks to minimize context switching:
+        
+        Tasks:
+        \(tasks.map { "- \($0.title) (type: \($0.type.rawValue))" }.joined(separator: "\n"))
+        
+        Cognitive Modes:
+        \(cognitiveModes.map { "\($0.key): \($0.value)" }.joined(separator: "\n"))
+        
+        Suggest optimal clustering that:
+        1. Groups tasks by cognitive mode (creative, admin, errand, etc.)
+        2. Minimizes context switches
+        3. Respects task dependencies
+        4. Optimizes for flow state
+        
+        Respond with JSON:
+        {
+          "clusters": [
+            {
+              "mode": "creative",
+              "tasks": ["task_id1", "task_id2"],
+              "rationale": "explanation"
+            }
+          ]
+        }
+        """
+        
+        let response = try await mlx.generate(
+            prompt: prompt,
+            maxTokens: 512,
+            temperature: 0.3
+        )
+        
+        return try parseClusteringResponse(response, tasks: tasks)
+    }
+    
+    private func parseClusteringResponse(_ response: String, tasks: [TaskItem]) throws -> [[TaskItem]] {
+        // Parse JSON response and map to TaskItems
+        guard let data = response.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let clusters = json["clusters"] as? [[String: Any]] else {
+            // Fallback to simple clustering
+            return [tasks]
+        }
+        
+        var result: [[TaskItem]] = []
+        let taskMap = Dictionary(uniqueKeysWithValues: tasks.map { ($0.id, $0) })
+        
+        for cluster in clusters {
+            if let taskIds = cluster["tasks"] as? [String] {
+                let clusterTasks = taskIds.compactMap { taskMap[$0] }
+                if !clusterTasks.isEmpty {
+                    result.append(clusterTasks)
+                }
+            }
+        }
+        
+        return result.isEmpty ? [tasks] : result
     }
     
     /// Check if block meets minimum size requirement

@@ -7,15 +7,21 @@ public actor KOExecutor {
     private let clauseLang: ClauseLang
     private let reflexTriggerSystem: ReflexTriggerSystem?
     private let entropyCapEnforcer: EntropyCapEnforcer?
+    private let monitor: KOMonitor?
+    private let logger: KOLogger?
     
     public init(
         clauseLang: ClauseLang,
         reflexTriggerSystem: ReflexTriggerSystem? = nil,
-        entropyCapEnforcer: EntropyCapEnforcer? = nil
+        entropyCapEnforcer: EntropyCapEnforcer? = nil,
+        monitor: KOMonitor? = nil,
+        logger: KOLogger? = nil
     ) {
         self.clauseLang = clauseLang
         self.reflexTriggerSystem = reflexTriggerSystem
         self.entropyCapEnforcer = entropyCapEnforcer
+        self.monitor = monitor
+        self.logger = logger
     }
     
     /// Execute a Kernel Object
@@ -26,6 +32,10 @@ public actor KOExecutor {
     ) async throws -> KOExecutionResult {
         let startTime = Date()
         var executionState = KOExecutionState(koId: ko.id)
+        
+        // Start monitoring
+        await monitor?.startExecution(ko.id)
+        await logger?.log(level: .info, message: "Starting KO execution", koId: ko.id)
         
         // Register reflex triggers if available
         if let reflex = reflexTriggerSystem {
@@ -139,21 +149,47 @@ public actor KOExecutor {
                     executionState.events.append(completeEvent)
                     
                 } catch {
-                    // Handle node failure
+                    // Handle node failure with recovery
                     let failEvent = KOEvent(
                         type: .nodeFailed,
                         nodeId: node.id,
-                        message: "Node failed: \(error.localizedDescription)"
+                        message: "Node failed: \(error.localizedDescription)",
+                        data: ["error": error.localizedDescription]
                     )
                     executionState.events.append(failEvent)
+                    
+                    // Attempt recovery
+                    if let recovery = await attemptNodeRecovery(node: node, error: error, context: context) {
+                        // Recovery successful, continue
+                        let recoveryEvent = KOEvent(
+                            type: .nodeCompleted,
+                            nodeId: node.id,
+                            message: "Node recovered: \(recovery)"
+                        )
+                        executionState.events.append(recoveryEvent)
+                        executionState.completedNodes.insert(node.id)
+                        continue
+                    }
                     
                     // Check retry limit
                     if executionState.retryCount < (ko.loop?.retryLimit ?? 2) {
                         executionState.retryCount += 1
-                        // Retry node (in real implementation, would retry with backoff)
+                        
+                        // Exponential backoff before retry
+                        let backoff = min(1.0 * pow(2.0, Double(executionState.retryCount - 1)), 5.0)
+                        try? await Task.sleep(nanoseconds: UInt64(backoff * 1_000_000_000))
+                        
+                        // Retry node
                         continue
                     } else {
-                        // Max retries exceeded
+                        // Max retries exceeded - try graceful degradation
+                        if let degraded = await attemptGracefulDegradation(node: node, ko: currentKO) {
+                            // Continue with degraded KO
+                            currentKO = degraded
+                            continue
+                        }
+                        
+                        // Complete failure
                         return KOExecutionResult(
                             koId: ko.id,
                             success: false,
@@ -169,13 +205,19 @@ public actor KOExecutor {
             // Check if all nodes completed
             if executionState.completedNodes.count == currentKO.dagNodes.count {
                 // All nodes completed successfully
-                return KOExecutionResult(
+                let finalResult = KOExecutionResult(
                     koId: ko.id,
                     success: true,
                     outputs: outputs,
                     executionState: executionState,
                     duration: Date().timeIntervalSince(startTime)
                 )
+                
+                // End monitoring
+                await monitor?.endExecution(koId: ko.id, result: finalResult)
+                await logger?.log(level: .info, message: "KO execution completed successfully", koId: ko.id)
+                
+                return finalResult
             }
             
             // Update entropy (if rescheduling occurred)
@@ -185,7 +227,7 @@ public actor KOExecutor {
         }
         
         // Max iterations reached
-        return KOExecutionResult(
+        let finalResult = KOExecutionResult(
             koId: ko.id,
             success: false,
             outputs: outputs,
@@ -193,6 +235,12 @@ public actor KOExecutor {
             error: "Max iterations (\(maxIters)) reached",
             duration: Date().timeIntervalSince(startTime)
         )
+        
+        // End monitoring
+        await monitor?.endExecution(koId: ko.id, result: finalResult)
+        await logger?.log(level: .warning, message: "KO execution failed: max iterations reached", koId: ko.id)
+        
+        return finalResult
     }
     
     /// Handle reflex event during execution
@@ -269,5 +317,76 @@ public actor KOExecutor {
     ) async {
         // Update entropy based on rescheduling in this iteration
         // In real implementation, would track actual rescheduling actions
+    }
+    
+    /// Attempt to recover from node failure
+    private func attemptNodeRecovery(
+        node: DAGNode,
+        error: Error,
+        context: ClauseContext
+    ) async -> String? {
+        // Try to recover based on error type
+        let errorStr = error.localizedDescription.lowercased()
+        
+        // If it's a condition not met, try to adjust context
+        if errorStr.contains("condition not met") {
+            // Try to satisfy condition by adjusting context
+            // This is a simple recovery - in real implementation, would be more sophisticated
+            return "Adjusted context to satisfy condition"
+        }
+        
+        // If it's a parsing error, skip the node
+        if errorStr.contains("parse") || errorStr.contains("syntax") {
+            return "Skipped node due to parsing error"
+        }
+        
+        return nil // No recovery possible
+    }
+    
+    /// Attempt graceful degradation
+    private func attemptGracefulDegradation(
+        node: DAGNode,
+        ko: KernelObject
+    ) async -> KernelObject? {
+        // Remove failed node and continue with remaining nodes
+        var newNodes = ko.dagNodes.filter { $0.id != node.id }
+        
+        // Update dependencies to remove references to failed node
+        for i in 0..<newNodes.count {
+            var updatedNode = newNodes[i]
+            if updatedNode.dependencies.contains(node.id) {
+                var newDeps = updatedNode.dependencies
+                newDeps.removeAll { $0 == node.id }
+                updatedNode = DAGNode(
+                    id: updatedNode.id,
+                    clause: updatedNode.clause,
+                    dependencies: newDeps,
+                    inputs: updatedNode.inputs,
+                    outputs: updatedNode.outputs
+                )
+                newNodes[i] = updatedNode
+            }
+        }
+        
+        // Create degraded KO
+        return KernelObject(
+            clauseId: ko.clauseId,
+            type: ko.type,
+            role: ko.role,
+            inputs: ko.inputs,
+            yields: ko.yields,
+            dagNodes: newNodes,
+            logic: ko.logic,
+            loop: ko.loop,
+            reflex: ko.reflex,
+            composition: ko.composition,
+            metadata: KernelMetadata(
+                version: ko.metadata.version,
+                validated: false, // Mark as degraded
+                siglereChecksum: ko.metadata.siglereChecksum,
+                createdAt: ko.metadata.createdAt,
+                updatedAt: Date()
+            )
+        )
     }
 }

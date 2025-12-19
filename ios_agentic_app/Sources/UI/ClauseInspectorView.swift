@@ -134,3 +134,56 @@ struct ClauseCard: View {
         .shadow(color: .black.opacity(0.1), radius: 2, x: 0, y: 1)
     }
 }
+
+// MARK: - Ricardian Document View
+
+struct RicardianDocumentView: View {
+    let document: RicardianDocument
+    @State private var showingMachine = false
+    
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                // Prose section
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Human-Readable (Prose)")
+                        .font(.headline)
+                    
+                    Text(document.prose)
+                        .font(.body)
+                        .padding()
+                        .background(Color(.systemGray6))
+                        .cornerRadius(12)
+                }
+                
+                // Toggle for machine form
+                Button(action: { showingMachine.toggle() }) {
+                    HStack {
+                        Text(showingMachine ? "Hide" : "Show")
+                        Text("Machine-Executable Form")
+                        Image(systemName: showingMachine ? "chevron.up" : "chevron.down")
+                    }
+                    .font(.subheadline)
+                    .foregroundColor(.blue)
+                }
+                
+                if showingMachine {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Machine-Executable (JSON)")
+                            .font(.headline)
+                        
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            Text(document.machine)
+                                .font(.system(.caption, design: .monospaced))
+                                .padding()
+                                .background(Color(.systemGray5))
+                                .cornerRadius(8)
+                        }
+                    }
+                }
+            }
+            .padding()
+        }
+        .navigationTitle("Clause Details")
+    }
+}

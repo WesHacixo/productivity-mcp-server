@@ -1,0 +1,21 @@
+#!/bin/sh
+set -euo pipefail
+
+echo "🧪 Running pre-commit checks..."
+
+go_files=$(git diff --cached --name-only --diff-filter=ACM | grep '\.go$' || true)
+if [ -n "$go_files" ]; then
+  fmt_files=$(printf '%s\n' $go_files)
+  echo "  -> gofmt formatting changed Go files..."
+  gofmt -w $fmt_files
+  git add $fmt_files
+  echo "  -> go test ./..."
+  go test ./...
+fi
+
+if [ -f "productivity_tool_app/package.json" ]; then
+  echo "  -> Running productivity tool app lint..."
+  (cd productivity_tool_app && pnpm lint)
+fi
+
+echo "✅ pre-commit checks passed"

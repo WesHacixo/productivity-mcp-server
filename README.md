@@ -76,6 +76,15 @@ go mod download
 go run main.go
 ```
 
+### Git Hooks
+
+Configure the repo-wide git hooks once after cloning:
+```bash
+bash scripts/setup-hooks.sh
+```
+
+The pre-commit hook runs `gofmt`/`go test ./...` on staged Go files plus `pnpm lint` inside the productivity tool app so lint/task failures are caught locally before commits.
+
 The server will start on `http://localhost:8000`
 
 ## API Endpoints
