@@ -12,14 +12,25 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
+  InitializeRequestSchema,
   ErrorCode,
   McpError,
 } from "@modelcontextprotocol/sdk/types.js";
 
 // Configuration from user_config in manifest.json
+// MCPB passes user config as environment variables with MCP_USER_CONFIG_ prefix
+// For MCPB bundles, config keys are uppercased and prefixed
 const API_URL = process.env.MCP_USER_CONFIG_API_URL || 
+  process.env.API_URL ||
   "https://productivity-mcp-server-production.up.railway.app";
-const API_KEY = process.env.MCP_USER_CONFIG_API_KEY || "";
+const API_KEY = process.env.MCP_USER_CONFIG_API_KEY || 
+  process.env.API_KEY || 
+  "";
+
+// Debug logging (to stderr so it appears in Claude Desktop logs)
+console.error(`[Productivity MCP] Starting server...`);
+console.error(`[Productivity MCP] API_URL: ${API_URL ? 'set' : 'not set'}`);
+console.error(`[Productivity MCP] API_KEY: ${API_KEY ? 'set' : 'not set'}`);
 
 // Create MCP server
 const server = new Server(
@@ -63,8 +74,24 @@ async function apiRequest(endpoint, options = {}) {
   }
 }
 
+// Handle initialize request
+server.setRequestHandler(InitializeRequestSchema, async (request) => {
+  console.error("[Productivity MCP] Initialize request received");
+  return {
+    protocolVersion: request.params.protocolVersion,
+    capabilities: {
+      tools: {},
+    },
+    serverInfo: {
+      name: "productivity-mcp-server",
+      version: "1.0.0",
+    },
+  };
+});
+
 // List available tools
 server.setRequestHandler(ListToolsRequestSchema, async () => {
+  console.error("[Productivity MCP] ListTools request received");
   return {
     tools: [
       {
@@ -270,7 +297,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             goalId: {
               type: "string",
               description: "Goal ID to delete",
-          },
+            },
           },
           required: ["goalId"],
         },
@@ -484,12 +511,33 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
 // Start the server
 async function main() {
-  const transport = new StdioServerTransport();
-  await server.connect(transport);
-  console.error("Productivity MCP Server running on stdio");
+  try {
+    console.error("[Productivity MCP] Initializing transport...");
+    const transport = new StdioServerTransport();
+    
+    console.error("[Productivity MCP] Connecting server to transport...");
+    await server.connect(transport);
+    
+    console.error("[Productivity MCP] Server connected successfully");
+    console.error("[Productivity MCP] Ready to handle requests");
+  } catch (error) {
+    console.error("[Productivity MCP] Fatal error during initialization:", error);
+    console.error("[Productivity MCP] Error stack:", error.stack);
+    process.exit(1);
+  }
 }
 
-main().catch((error) => {
-  console.error("Fatal error:", error);
+// Handle uncaught errors
+process.on('uncaughtException', (error) => {
+  console.error("[Productivity MCP] Uncaught exception:", error);
+  console.error("[Productivity MCP] Stack:", error.stack);
   process.exit(1);
 });
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error("[Productivity MCP] Unhandled rejection at:", promise);
+  console.error("[Productivity MCP] Reason:", reason);
+  process.exit(1);
+});
+
+main();
